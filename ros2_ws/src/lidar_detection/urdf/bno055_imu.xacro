@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="add_bno055_imu" params="parent_link">
+
+    <!-- BNO055 IMU Link -->
+    <link name="bno055_imu_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${imu_size_x} ${imu_size_y} ${imu_size_z}"/>
+        </geometry>
+        <material name="gray">
+          <color rgba="0.4 0.4 0.4 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${imu_size_x} ${imu_size_y} ${imu_size_z}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.003"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+
+    <!-- Fixed Joint to Base -->
+    <joint name="bno055_imu_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="bno055_imu_link"/>
+      <origin xyz="${imu_distance_x} ${imu_distance_y} ${imu_distance_z}" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Gazebo IMU Sensor -->
+    <gazebo reference="bno055_imu_link">
+      <sensor name="bno055_imu" type="imu">
+        <update_rate>50.0</update_rate>
+        <visualize>true</visualize>
+        <imu>
+          <angular_velocity>
+            <x>true</x>
+            <y>true</y>
+            <z>true</z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>true</x>
+            <y>true</y>
+            <z>true</z>
+          </linear_acceleration>
+        </imu>
+        <plugin name="bno055_imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+          <ros>
+            <remapping>~/out:=imu</remapping>
+          </ros>
+          <frame_name>bno055_imu_link</frame_name>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+  </xacro:macro>
+
+</robot>

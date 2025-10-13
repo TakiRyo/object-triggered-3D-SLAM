@@ -1,4 +1,10 @@
 #ros2_ws
-/ros2_ws/build
 /ros2_ws/install
 /ros2_ws/log
+/ros2_ws/build
+
+#turtlebot3
+/ros2_ws/src/turtlebot3
+/ros2_ws/src/turtlebot3_msgs
+/ros2_ws/src/turtlebot3_simulations
+/ros2_ws/src/DynamixelSDK
