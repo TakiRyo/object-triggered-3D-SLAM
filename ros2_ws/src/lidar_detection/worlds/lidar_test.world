@@ -17,32 +17,31 @@
 
         <!-- Back wall -->
         <visual name="back_visual">
-          <geometry><box><size>10 0.1 2.5</size></box></geometry>
-          <pose>0 -5 1.25 0 0 0</pose>
+          <geometry><box><size>20 0.1 2.5</size></box></geometry>
+          <pose>0 -10 1.25 0 0 0</pose>
           <material><ambient>0.8 0.8 0.8 1</ambient></material>
         </visual>
 
         <!-- Front wall -->
         <visual name="front_visual">
-          <geometry><box><size>10 0.1 2.5</size></box></geometry>
-          <pose>0 5 1.25 0 0 0</pose>
+          <geometry><box><size>20 0.1 2.5</size></box></geometry>
+          <pose>0 10 1.25 0 0 0</pose>
           <material><ambient>0.8 0.8 0.8 1</ambient></material>
         </visual>
 
         <!-- Left wall -->
         <visual name="left_visual">
-          <geometry><box><size>0.1 10 2.5</size></box></geometry>
-          <pose>-5 0 1.25 0 0 0</pose>
+          <geometry><box><size>0.1 20 2.5</size></box></geometry>
+          <pose>-10 0 1.25 0 0 0</pose>
           <material><ambient>0.8 0.8 0.8 1</ambient></material>
         </visual>
 
         <!-- Right wall -->
         <visual name="right_visual">
-          <geometry><box><size>0.1 10 2.5</size></box></geometry>
-          <pose>5 0 1.25 0 0 0</pose>
+          <geometry><box><size>0.1 20 2.5</size></box></geometry>
+          <pose>10 0 1.25 0 0 0</pose>
           <material><ambient>0.8 0.8 0.8 1</ambient></material>
         </visual>
-
       </link>
     </model>
   </world>
