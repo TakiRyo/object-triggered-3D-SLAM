@@ -7,3 +7,6 @@
 /ros2_ws/src/turtlebot3
 /ros2_ws/src/turtlebot3_msgs
 /ros2_ws/src/DynamixelSDK
+
+#maps
+/2d_map/
