@@ -14,6 +14,18 @@
   <depend>robot_state_publisher</depend>
   <depend>xacro</depend>
 
+   <!-- Messages -->
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+
+  <!-- TF (for coordinate transforms) -->
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+
+  <!-- Optional: for parameter support -->
+  <depend>rclcpp_components</depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>
