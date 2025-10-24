@@ -71,11 +71,11 @@ private:
   // ---------- main callback ----------
   void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
   {
-    // Step 1. Split scan into clusters
     std::vector<std::vector<std::pair<float, float>>> clusters;
     std::vector<std::pair<float, float>> current_cluster;
     float prev_range = std::numeric_limits<float>::quiet_NaN();
 
+    // --- Cluster scan points ---
     for (size_t i = 0; i < msg->ranges.size(); ++i)
     {
       float r = msg->ranges[i];
@@ -95,33 +95,63 @@ private:
     if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
       clusters.push_back(current_cluster);
 
-    // Step 2. Transform to map frame
+    // --- TF lookup ---
     geometry_msgs::msg::TransformStamped transform;
     try {
       transform = tf_buffer_.lookupTransform("map", "base_link", tf2::TimePointZero);
     } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-                           "TF not ready: %s", ex.what());
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "TF not ready: %s", ex.what());
       return;
     }
 
-    // Separate points into wall vs object lists
     std::vector<geometry_msgs::msg::Point> wall_points;
     std::vector<geometry_msgs::msg::Point> object_points;
 
-    for (auto &cluster : clusters)
+    // --- Cluster classification ---
+    for (const auto &cluster : clusters)
     {
       float length = computeClusterLength(cluster);
       float linearity = computeLinearity(cluster);
+      bool is_wall_candidate = (length > 2.0 && linearity < 0.2);
 
-      bool is_wall = (length > 2.0 && linearity < 0.2);
-
-      for (auto &p : cluster)
+      if (!is_wall_candidate)
       {
+        // normal object cluster
+        for (auto &p : cluster)
+        {
+          geometry_msgs::msg::PoseStamped pt_base, pt_map;
+          pt_base.header.frame_id = "base_link";
+          pt_base.pose.position.x = p.first;
+          pt_base.pose.position.y = p.second;
+          pt_base.pose.orientation.w = 1.0;
+          tf2::doTransform(pt_base, pt_map, transform);
+          geometry_msgs::msg::Point pt;
+          pt.x = pt_map.pose.position.x;
+          pt.y = pt_map.pose.position.y;
+          pt.z = 0.0;
+          object_points.push_back(pt);
+        }
+        continue;
+      }
+
+      // --- Check within wall cluster for local protrusions ---
+      for (size_t i = 1; i + 1 < cluster.size(); ++i)
+      {
+        float x_prev = cluster[i-1].first, y_prev = cluster[i-1].second;
+        float x_curr = cluster[i].first, y_curr = cluster[i].second;
+        float x_next = cluster[i+1].first, y_next = cluster[i+1].second;
+
+        float r_prev = std::hypot(x_prev, y_prev);
+        float r_curr = std::hypot(x_curr, y_curr);
+        float r_next = std::hypot(x_next, y_next);
+
+        // Detect depth discontinuity (object bump)
+        bool protrusion = (r_curr < r_prev - 0.15 && r_curr < r_next - 0.15);
+
         geometry_msgs::msg::PoseStamped pt_base, pt_map;
         pt_base.header.frame_id = "base_link";
-        pt_base.pose.position.x = p.first;
-        pt_base.pose.position.y = p.second;
+        pt_base.pose.position.x = x_curr;
+        pt_base.pose.position.y = y_curr;
         pt_base.pose.orientation.w = 1.0;
         tf2::doTransform(pt_base, pt_map, transform);
 
@@ -129,17 +159,19 @@ private:
         pt.x = pt_map.pose.position.x;
         pt.y = pt_map.pose.position.y;
         pt.z = 0.0;
-        if (is_wall)
-          wall_points.push_back(pt);
+
+        if (protrusion)
+          object_points.push_back(pt);  // blue (object on wall)
         else
-          object_points.push_back(pt);
+          wall_points.push_back(pt);    // green(flat wall)
       }
     }
 
-    // Publish two point clouds
+    // Publish
     publishPointCloud(wall_points, wall_pub_, 0, 0, 255);   // blue
     publishPointCloud(object_points, object_pub_, 255, 0, 0); // red
   }
+
 
   // ---------- helper: publish one cloud ----------
   void publishPointCloud(const std::vector<geometry_msgs::msg::Point>& points,

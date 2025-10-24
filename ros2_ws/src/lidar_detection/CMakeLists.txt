@@ -10,7 +10,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 
-add_executable(lidar_cluster_publisher src/lidar_cluster_publisher.cpp)
+add_executable(lidar_cluster_publisher src/6_lidar_cluster_publisher.cpp)
 
 
 ament_target_dependencies(lidar_cluster_publisher
