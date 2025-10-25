@@ -13,7 +13,7 @@ public:
   : Node("object_cluster_marker")
   {
     // Parameters
-    this->declare_parameter("cluster_distance_threshold", 2.0);
+    this->declare_parameter("cluster_distance_threshold", 2.5); //PARAM
     cluster_distance_threshold_ = this->get_parameter("cluster_distance_threshold").as_double();
 
     // Subscriber & Publisher
@@ -66,7 +66,7 @@ private:
 
     for (const auto &cluster : clusters)
     {
-      if (cluster.size() < 3) continue; // skip tiny noise
+      if (cluster.size() < 1) continue; // skip tiny noise
 
       float min_x = std::numeric_limits<float>::max();
       float max_x = std::numeric_limits<float>::lowest();
@@ -103,10 +103,10 @@ private:
       marker.scale.y = height;
       marker.scale.z = 0.1;
 
-      // 🟦 same color for all
-      marker.color.r = 0.0f;
-      marker.color.g = 0.5f;
-      marker.color.b = 1.0f;
+      // 🟥 same color for all (red)
+      marker.color.r = 1.0f;
+      marker.color.g = 0.0f;
+      marker.color.b = 0.0f;
       marker.color.a = 0.6f;
 
       marker.lifetime = rclcpp::Duration::from_seconds(0); // persistent
