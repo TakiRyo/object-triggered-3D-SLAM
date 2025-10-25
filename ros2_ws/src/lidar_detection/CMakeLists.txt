@@ -16,7 +16,7 @@ find_package(nav2_msgs REQUIRED)
 
 add_executable(lidar_cluster_publisher src/6_lidar_cluster_publisher.cpp)
 add_executable(send_goal_node src/2_send_goal_node.cpp)
-add_executable(object_goal_selector src/object_goal_selector.cpp)
+add_executable(object_goal_selector src/3_object_goal_selector.cpp)
 
 
 ament_target_dependencies(lidar_cluster_publisher
@@ -41,6 +41,7 @@ ament_target_dependencies(object_goal_selector
   geometry_msgs
   tf2_ros
   tf2_geometry_msgs
+  visualization_msgs
 )
 
 
