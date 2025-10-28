@@ -17,18 +17,30 @@ public:
     tf_buffer_(this->get_clock()),
     tf_listener_(tf_buffer_)
   {
+    // ---- Declare parameters ----
+    this->declare_parameter("gap_threshold", 1.0); 
+    this->declare_parameter("min_cluster_points", 1);
+    this->declare_parameter("wall_length_threshold", 5.0);
+    this->declare_parameter("wall_linearity_threshold", 0.001);
+    this->declare_parameter("wall_min_points", 30);
+
+    // ---- Get parameter values ----
+    this->get_parameter("gap_threshold", gap_threshold_);
+    this->get_parameter("min_cluster_points", min_cluster_points_);
+    this->get_parameter("wall_length_threshold", wall_length_threshold_);
+    this->get_parameter("wall_linearity_threshold", wall_linearity_threshold_);
+    this->get_parameter("wall_min_points", wall_min_points_);
+
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "/scan", 10,
       std::bind(&LidarClusterPublisher::scanCallback, this, std::placeholders::_1));
 
     wall_pub_   = this->create_publisher<sensor_msgs::msg::PointCloud2>("/wall_clusters", 10);
     object_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/object_clusters", 10);
-    
-    // You start a new cluster whenever the distance between consecutive ranges exceeds gap_threshold_
-    gap_threshold_ = 0.5;
-    min_cluster_points_ = 1;
 
     RCLCPP_INFO(this->get_logger(), "✅ LidarClusterPublisher started (publishes wall + object clouds)");
+    RCLCPP_INFO(this->get_logger(), "Parameters: gap=%.2f, min_points=%d, wall_len=%.2f, wall_lin=%.2f, wall_min_pts=%d",
+                gap_threshold_, min_cluster_points_, wall_length_threshold_, wall_linearity_threshold_, wall_min_points_);
   }
 
 private:
@@ -72,29 +84,72 @@ private:
   // ---------- main callback ----------
   void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
   {
+
     // --- Split scan into clusters ---
     std::vector<std::vector<std::pair<float, float>>> clusters;
     std::vector<std::pair<float, float>> current_cluster;
-    float prev_range = std::numeric_limits<float>::quiet_NaN();
 
     for (size_t i = 0; i < msg->ranges.size(); ++i)
     {
-      float r = msg->ranges[i];
-      if (std::isnan(r) || std::isinf(r)) continue;
+    float r = msg->ranges[i];
+    if (std::isnan(r) || std::isinf(r)) continue;
 
-      if (!std::isnan(prev_range) && std::fabs(r - prev_range) > gap_threshold_)
-      {
+    // compute 2D coordinates of this point in base_link frame
+    float angle = msg->angle_min + i * msg->angle_increment;
+    float x = r * std::cos(angle);
+    float y = r * std::sin(angle);
+
+    if (!current_cluster.empty())
+    {
+        // compute Euclidean distance to previous point
+        auto [prev_x, prev_y] = current_cluster.back();
+        float dist = std::hypot(x - prev_x, y - prev_y);
+
+        // start new cluster if the gap is too large
+        if (dist > gap_threshold_)
+        {
         if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
-          clusters.push_back(current_cluster);
+            clusters.push_back(current_cluster);
         current_cluster.clear();
-      }
-
-      float angle = msg->angle_min + i * msg->angle_increment;
-      current_cluster.push_back({r * std::cos(angle), r * std::sin(angle)});
-      prev_range = r;
+        }
     }
+
+    current_cluster.push_back({x, y});
+    }
+
+    // push the final cluster
     if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
-      clusters.push_back(current_cluster);
+    clusters.push_back(current_cluster);
+
+    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                        "Detected %zu clusters", clusters.size());
+
+    // // --- Split scan into clusters ---
+    // std::vector<std::vector<std::pair<float, float>>> clusters;
+    // std::vector<std::pair<float, float>> current_cluster;
+    // float prev_range = std::numeric_limits<float>::quiet_NaN();
+
+    // for (size_t i = 0; i < msg->ranges.size(); ++i)
+    // {
+    //   float r = msg->ranges[i];
+    //   if (std::isnan(r) || std::isinf(r)) continue;
+
+    //   // check gap between consecutive range readings
+    //   if (!std::isnan(prev_range) && std::fabs(r - prev_range) > gap_threshold_)
+    //   {
+    //     if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
+    //       clusters.push_back(current_cluster);
+    //     current_cluster.clear();
+    //   }
+
+    //   float angle = msg->angle_min + i * msg->angle_increment;
+    //   current_cluster.push_back({r * std::cos(angle), r * std::sin(angle)});
+    //   prev_range = r;
+    // }
+    // if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
+    //   clusters.push_back(current_cluster);
+
+    // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Detected %zu clusters", clusters.size());
 
     // --- TF lookup ---
     geometry_msgs::msg::TransformStamped transform;
@@ -109,14 +164,26 @@ private:
     std::vector<geometry_msgs::msg::Point> wall_points;
     std::vector<geometry_msgs::msg::Point> object_points;
 
-    for (const auto &cluster : clusters)
+    for (size_t idx = 0; idx < clusters.size(); ++idx)
     {
-      float length = computeClusterLength(cluster);
-      float linearity = computeLinearity(cluster);
-      size_t n_points = cluster.size();
+        const auto &cluster = clusters[idx];
+    //   float length = computeClusterLength(cluster);
+    //   float linearity = computeLinearity(cluster);
+    //   size_t n_points = cluster.size();
 
-      // improved rule for wall classification (set params)
-      bool is_wall = (n_points > 10 && length > 1.5 && linearity < 0.15); 
+    //   RCLCPP_INFO(this->get_logger(), "Cluster %zu: length=%.2f, linearity=%.3f, points=%zu", idx, length, linearity, n_points);
+
+    //   bool is_wall = (n_points > wall_min_points_ && length > wall_length_threshold_ && linearity < wall_linearity_threshold_);
+        float length = computeClusterLength(cluster);
+        float linearity = computeLinearity(cluster);
+        size_t n_points = cluster.size();
+
+        bool is_wall = (n_points > wall_min_points_ && length > wall_length_threshold_ && linearity < wall_linearity_threshold_);
+
+        std::string type_str = is_wall ? "WALL" : "OBJECT";
+        RCLCPP_INFO(this->get_logger(),
+                    "Cluster %zu: length=%.2f, linearity=%.3f, points=%zu → %s",
+                    idx, length, linearity, n_points, type_str.c_str());
 
       for (auto &p : cluster)
       {
@@ -187,8 +254,13 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr object_pub_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
+
+  // Parameters
   float gap_threshold_;
-  int min_cluster_points_;
+  int   min_cluster_points_;
+  float wall_length_threshold_;
+  float wall_linearity_threshold_;
+  int   wall_min_points_;
 };
 
 int main(int argc, char **argv)
