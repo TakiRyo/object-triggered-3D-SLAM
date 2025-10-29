@@ -21,7 +21,7 @@ add_executable(object_goal_selector src/3_object_goal_selector.cpp)
 add_executable(visiting_point_selector src/2_visiting_point_selector.cpp)
 
 # publish object and wall cluster
-add_executable(lidar_cluster_publisher src/9_lidar_cluster_publisher.cpp)
+add_executable(lidar_cluster_publisher src/lidar_cluster_publisher.cpp)
 
 # estimate wall and room shape. but it doesn't work well. 
 add_executable(room_shape_estimator src/2_room_shape_estimator.cpp)
