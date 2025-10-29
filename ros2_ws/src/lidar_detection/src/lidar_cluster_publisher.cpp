@@ -1,3 +1,47 @@
+/**
+ * ------------------------------------------------------------
+ * LiDAR Cluster Classification Node
+ * ------------------------------------------------------------
+ * Purpose:
+ *   Classifies LiDAR scan data into three categories:
+ *     - Wall (green)
+ *     - Possibly Wall (yellow)
+ *     - Object (blue)
+ *
+ * Input:
+ *   /scan  (sensor_msgs::msg::LaserScan)
+ *
+ * Output:
+ *   /wall_clusters           (sensor_msgs::msg::PointCloud2)
+ *   /possibly_wall_clusters  (sensor_msgs::msg::PointCloud2)
+ *   /object_clusters         (sensor_msgs::msg::PointCloud2)
+ *
+ * How it works:
+ *   1. Splits the LiDAR scan into clusters — a new cluster starts
+ *      when the distance between consecutive points exceeds
+ *      `gap_threshold`.
+ *   2. For each cluster, computes:
+ *        - Length (max spatial extent)
+ *        - Linearity (via PCA)
+ *        - Number of points
+ *   3. Classifies clusters:
+ *        - Wall: long, straight, dense
+ *        - Possibly Wall: moderately long and fairly straight
+ *        - Object: short or irregular
+ *   4. Publishes each category as a colored PointCloud2.
+ *
+ * Adjustable parameters:
+ *   gap_threshold                  // distance gap for splitting clusters
+ *   wall_length_threshold           // min length for wall
+ *   wall_linearity_threshold        // max linearity for wall
+ *   wall_min_points                 // min number of points for wall
+ *   possibly_wall_length_threshold  // min length for possibly wall
+ *   possibly_wall_linearity_threshold // max linearity for possibly wall
+ *   max_range_ratio                 // fraction of LiDAR range to use
+ *
+ * ------------------------------------------------------------
+ */
+
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -18,12 +62,15 @@ public:
     tf_listener_(tf_buffer_)
   {
     // ---- Declare parameters ----
-    this->declare_parameter("gap_threshold", 0.1); //don't write like 1
+    this->declare_parameter("gap_threshold", 0.2);
     this->declare_parameter("min_cluster_points", 1);
     this->declare_parameter("wall_length_threshold", 2.0);
     this->declare_parameter("wall_linearity_threshold", 0.001);
-    this->declare_parameter("wall_min_points", 10);
-    this->declare_parameter("max_range_ratio", 0.9); // use half the lidar range
+    this->declare_parameter("wall_min_points", 20);
+    this->declare_parameter("possibly_wall_length_threshold", 0.5);
+    this->declare_parameter("possibly_wall_linearity_threshold", 0.005);
+    // this->declare_parameter("possibly_wall_min_points", 10);
+    this->declare_parameter("max_range_ratio", 1.0);
 
     // ---- Get parameter values ----
     this->get_parameter("gap_threshold", gap_threshold_);
@@ -31,20 +78,20 @@ public:
     this->get_parameter("wall_length_threshold", wall_length_threshold_);
     this->get_parameter("wall_linearity_threshold", wall_linearity_threshold_);
     this->get_parameter("wall_min_points", wall_min_points_);
+    this->get_parameter("possibly_wall_length_threshold", possibly_wall_length_threshold_);
+    this->get_parameter("possibly_wall_linearity_threshold", possibly_wall_linearity_threshold_);
+    this->get_parameter("possibly_wall_min_points", possibly_wall_min_points_);
     this->get_parameter("max_range_ratio", max_range_ratio_);
 
+    // ---- Subscribers & Publishers ----
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-      "/scan", 10,
-      std::bind(&LidarClusterPublisher::scanCallback, this, std::placeholders::_1));
+      "/scan", 10, std::bind(&LidarClusterPublisher::scanCallback, this, std::placeholders::_1));
 
-    wall_pub_   = this->create_publisher<sensor_msgs::msg::PointCloud2>("/wall_clusters", 10);
-    object_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/object_clusters", 10);
+    wall_pub_          = this->create_publisher<sensor_msgs::msg::PointCloud2>("/wall_clusters", 10);
+    possibly_wall_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/possibly_wall_clusters", 10);
+    object_pub_        = this->create_publisher<sensor_msgs::msg::PointCloud2>("/object_clusters", 10);
 
-    RCLCPP_INFO(this->get_logger(), "✅ LidarClusterPublisher started (publishes wall + object clouds)");
-    RCLCPP_INFO(this->get_logger(),
-      "Parameters: gap=%.2f, min_points=%d, wall_len=%.2f, wall_lin=%.2f, wall_min_pts=%d, max_range_ratio=%.2f",
-      gap_threshold_, min_cluster_points_, wall_length_threshold_,
-      wall_linearity_threshold_, wall_min_points_, max_range_ratio_);
+    RCLCPP_INFO(this->get_logger(), "✅ LidarClusterPublisher started (publishes wall + possibly wall + object clouds)");
   }
 
 private:
@@ -98,11 +145,8 @@ private:
     {
       float r = msg->ranges[i];
       if (std::isnan(r) || std::isinf(r)) continue;
-
-      // skip far points (beyond chosen range)
       if (r > max_use_range) continue;
 
-      // compute 2D coordinates
       float angle = msg->angle_min + i * msg->angle_increment;
       float x = r * std::cos(angle);
       float y = r * std::sin(angle);
@@ -111,7 +155,6 @@ private:
       {
         auto [prev_x, prev_y] = current_cluster.back();
         float dist = std::hypot(x - prev_x, y - prev_y);
-
         if (dist > gap_threshold_)
         {
           if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
@@ -119,31 +162,23 @@ private:
           current_cluster.clear();
         }
       }
-
       current_cluster.push_back({x, y});
     }
-
     if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
         clusters.push_back(current_cluster);
 
-    // --- Merge first and last clusters if they are connected around 360° ---
+    // --- Merge first and last clusters if connected (360°) ---
     if (!clusters.empty()) {
         auto &first_cluster = clusters.front();
         auto &last_cluster  = clusters.back();
-
         if (!first_cluster.empty() && !last_cluster.empty()) {
-            // Compare last point of the last cluster and first point of the first cluster
             auto [x1, y1] = last_cluster.back();
             auto [x2, y2] = first_cluster.front();
-
             float wrap_dist = std::hypot(x1 - x2, y1 - y2);
-
             if (wrap_dist < gap_threshold_) {
-            // Merge them into one cluster
-            last_cluster.insert(last_cluster.end(),
-                                first_cluster.begin(), first_cluster.end());
-            clusters.erase(clusters.begin());  // remove the first one
-            RCLCPP_INFO(this->get_logger(), "Merged first and last clusters (wrap-around).");
+              last_cluster.insert(last_cluster.end(), first_cluster.begin(), first_cluster.end());
+              clusters.erase(clusters.begin());
+              RCLCPP_INFO(this->get_logger(), "Merged first and last clusters (wrap-around).");
             }
         }
     }
@@ -160,8 +195,9 @@ private:
       return;
     }
 
-    // --- Separate wall vs object clusters ---
+    // --- Separate wall / possibly wall / object ---
     std::vector<geometry_msgs::msg::Point> wall_points;
+    std::vector<geometry_msgs::msg::Point> possibly_wall_points;
     std::vector<geometry_msgs::msg::Point> object_points;
 
     for (size_t idx = 0; idx < clusters.size(); ++idx)
@@ -171,11 +207,14 @@ private:
       float linearity = computeLinearity(cluster);
       size_t n_points = cluster.size();
 
-      bool is_wall = (n_points > wall_min_points_ && 
-                      length > wall_length_threshold_ && 
-                      linearity < wall_linearity_threshold_);
+      std::string type_str = "OBJECT";
+      
+      // detect cluster name 
+      if (linearity < wall_linearity_threshold_ && length > wall_length_threshold_ && n_points > wall_min_points_)
+        type_str = "WALL";
+      else if (linearity < possibly_wall_linearity_threshold_ && length > possibly_wall_length_threshold_)
+        type_str = "POSSIBLY_WALL";
 
-      std::string type_str = is_wall ? "WALL" : "OBJECT";
       RCLCPP_INFO(this->get_logger(),
                   "Cluster %zu: length=%.2f, linearity=%.3f, points=%zu → %s",
                   idx, length, linearity, n_points, type_str.c_str());
@@ -194,16 +233,19 @@ private:
         pt.y = pt_map.pose.position.y;
         pt.z = 0.0;
 
-        if (is_wall)
+        if (type_str == "WALL")
           wall_points.push_back(pt);
+        else if (type_str == "POSSIBLY_WALL")
+          possibly_wall_points.push_back(pt);
         else
           object_points.push_back(pt);
       }
     }
 
-    // --- Publish ---
-    publishPointCloud(wall_points, wall_pub_, 0, 255, 0);
-    publishPointCloud(object_points, object_pub_, 0, 0, 255);
+    // --- Publish all three ---
+    publishPointCloud(wall_points, wall_pub_, 0, 255, 0);          // green
+    publishPointCloud(possibly_wall_points, possibly_wall_pub_, 255, 255, 0); // yellow
+    publishPointCloud(object_points, object_pub_, 0, 0, 255);      // blue
   }
 
   // ---------- helper: publish one cloud ----------
@@ -246,6 +288,7 @@ private:
   // --- Members ---
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr wall_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr possibly_wall_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr object_pub_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
@@ -256,6 +299,9 @@ private:
   float wall_length_threshold_;
   float wall_linearity_threshold_;
   int   wall_min_points_;
+  float possibly_wall_length_threshold_;
+  float possibly_wall_linearity_threshold_;
+  int   possibly_wall_min_points_;
   float max_range_ratio_;
 };
 
