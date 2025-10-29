@@ -12,11 +12,3 @@
 /2d_map/
 
 #lidar_detection
-/ros2_ws/src/lidar_detection/src/1_lidar_object_detection.cpp
-/ros2_ws/src/lidar_detection/src/2_lidar_cluster_publisher.cpp
-/ros2_ws/src/lidar_detection/src/3_lidar_object_detection.cpp
-/ros2_ws/src/lidar_detection/src/4_lidar_object_detection.cpp
-/ros2_ws/src/lidar_detection/src/5_lidar_object_detection.cpp
-/ros2_ws/src/lidar_detection/src/6_lidar_cluster_publisher.cpp
-/ros2_ws/src/lidar_detection/src/7_lidar_cluster_publisher.cpp
-/ros2_ws/src/lidar_detection/src/8_lidar_cluster_publisher.cpp
