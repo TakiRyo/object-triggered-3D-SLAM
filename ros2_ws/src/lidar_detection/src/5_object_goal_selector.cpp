@@ -13,10 +13,13 @@ public:
   : Node("object_cluster_marker")
   {
     // --- Parameters ---
-    this->declare_parameter("cluster_distance_threshold", 3.0);
-    this->declare_parameter("min_cluster_points", 10); 
+    this->declare_parameter("cluster_distance_threshold", 2.5);
+    this->declare_parameter("min_cluster_points", 10);
+    this->declare_parameter("wall_thickness_threshold", 0.2);  // ✅ new parameter
+
     cluster_distance_threshold_ = this->get_parameter("cluster_distance_threshold").as_double();
     min_cluster_points_ = this->get_parameter("min_cluster_points").as_int();
+    wall_thickness_threshold_ = this->get_parameter("wall_thickness_threshold").as_double();
 
     // --- Subscriber & Publisher ---
     object_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -26,8 +29,9 @@ public:
     marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "/object_markers", 10);
 
-    RCLCPP_INFO(this->get_logger(), "ObjectClusterMarker started (threshold=%.2f m, min_points=%d)",
-                cluster_distance_threshold_, min_cluster_points_);
+    RCLCPP_INFO(this->get_logger(),
+      "ObjectClusterMarker started (dist_thresh=%.2f m, min_points=%d, wall_thickness_thresh=%.2f m)",
+      cluster_distance_threshold_, min_cluster_points_, wall_thickness_threshold_);
   }
 
 private:
@@ -52,10 +56,10 @@ private:
     {
       float dx = points[i].first - points[i-1].first;
       float dy = points[i].second - points[i-1].second;
-      float dist = std::sqrt(dx*dx + dy*dy); // distance to previous point
+      float dist = std::sqrt(dx*dx + dy*dy);
 
       if (dist > cluster_distance_threshold_) {
-        if (current.size() >= static_cast<size_t>(min_cluster_points_)) // ✅ ignore tiny clusters
+        if (current.size() >= static_cast<size_t>(min_cluster_points_))
           clusters.push_back(current);
         current.clear();
       }
@@ -88,6 +92,16 @@ private:
       float width  = std::max(0.1f, max_x - min_x);
       float height = std::max(0.1f, max_y - min_y);
 
+      // ✅ --- Skip wall-like clusters (thin rectangles) ---
+      float shorter_side = std::min(width, height);
+      if (shorter_side < wall_thickness_threshold_) {
+        RCLCPP_DEBUG(this->get_logger(),
+                     "⏭️ Skipping thin wall-like cluster (width=%.2f, height=%.2f, short=%.2f)",
+                     width, height, shorter_side);
+        continue;
+      }
+
+      // --- Create marker ---
       visualization_msgs::msg::Marker marker;
       marker.header.frame_id = msg->header.frame_id;
       marker.header.stamp = this->get_clock()->now();
@@ -116,7 +130,7 @@ private:
 
     // --- Step 3: Publish markers ---
     marker_pub_->publish(marker_array);
-    RCLCPP_INFO(this->get_logger(), "Published %zu clusters as markers", clusters.size());
+    RCLCPP_INFO(this->get_logger(), "Published %zu clusters as markers", marker_array.markers.size());
   }
 
   // --- Members ---
@@ -124,6 +138,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   double cluster_distance_threshold_;
   int min_cluster_points_;
+  double wall_thickness_threshold_; // ✅ new member
 };
 
 int main(int argc, char **argv)

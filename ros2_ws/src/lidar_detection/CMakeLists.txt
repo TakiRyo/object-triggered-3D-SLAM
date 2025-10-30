@@ -14,17 +14,17 @@ find_package(nav2_msgs REQUIRED)
 
 
 add_executable(send_goal_node src/2_send_goal_node.cpp)
-
-add_executable(object_goal_selector src/3_object_goal_selector.cpp)
-
-# 
 add_executable(visiting_point_selector src/2_visiting_point_selector.cpp)
-
-# publish object and wall cluster
-add_executable(lidar_cluster_publisher src/lidar_cluster_publisher.cpp)
-
 # estimate wall and room shape. but it doesn't work well. 
 add_executable(room_shape_estimator src/2_room_shape_estimator.cpp)
+
+# publish object and wall cluster
+add_executable(lidar_cluster_publisher src/9_lidar_cluster_publisher.cpp)
+# estimate object size and publishe marker. 
+add_executable(object_goal_selector src/5_object_goal_selector.cpp)
+
+
+
 
 
 
