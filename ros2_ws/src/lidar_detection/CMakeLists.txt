@@ -21,7 +21,7 @@ add_executable(room_shape_estimator src/2_room_shape_estimator.cpp)
 # publish object and wall cluster
 add_executable(lidar_cluster_publisher src/9_lidar_cluster_publisher.cpp)
 # estimate object size and publishe marker. 
-add_executable(object_goal_selector src/6_object_goal_selector.cpp)
+add_executable(object_goal_selector src/7_object_goal_selector.cpp)
 
 
 
