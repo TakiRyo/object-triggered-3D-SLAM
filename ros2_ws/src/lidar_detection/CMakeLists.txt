@@ -13,7 +13,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 
 
-add_executable(send_goal_node src/2_send_goal_node.cpp)
+
 add_executable(visiting_point_selector src/2_visiting_point_selector.cpp)
 # estimate wall and room shape. but it doesn't work well. 
 add_executable(room_shape_estimator src/2_room_shape_estimator.cpp)
@@ -22,11 +22,8 @@ add_executable(room_shape_estimator src/2_room_shape_estimator.cpp)
 add_executable(lidar_cluster_publisher src/9_lidar_cluster_publisher.cpp)
 # estimate object size and publishe marker. 
 add_executable(object_goal_selector src/8_object_goal_selector.cpp)
-
-
-
-
-
+# publish goal node.
+add_executable(send_goal_node src/3_send_goal_node.cpp)
 
 
 ament_target_dependencies(lidar_cluster_publisher
@@ -43,6 +40,7 @@ ament_target_dependencies(send_goal_node
   rclcpp_action
   geometry_msgs
   nav2_msgs
+  visualization_msgs
 )
 
 ament_target_dependencies(object_goal_selector
@@ -62,7 +60,7 @@ ament_target_dependencies(visiting_point_selector
   tf2_geometry_msgs
   )
 
-  ament_target_dependencies(room_shape_estimator
+ament_target_dependencies(room_shape_estimator
   rclcpp
   sensor_msgs
   visualization_msgs
