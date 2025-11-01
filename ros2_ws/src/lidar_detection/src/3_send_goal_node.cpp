@@ -26,8 +26,8 @@ public:
   GoalSender() : Node("goal_sender")
   {
     // Parameters
-    this->declare_parameter("visit_offset", 0.3);      // distance away from cluster
-    this->declare_parameter("reach_threshold", 0.2);   // distance to mark visited
+    this->declare_parameter("visit_offset", 0.75);      // distance away from cluster
+    this->declare_parameter("reach_threshold", 0.5);   // distance to mark visited
     visit_offset_ = this->get_parameter("visit_offset").as_double();
     reach_threshold_ = this->get_parameter("reach_threshold").as_double();
 
@@ -141,19 +141,38 @@ private:
     }
 
     // Step 5: Check reached points
+    // for (auto &c : clusters_)
+    // {
+    //   bool all_done = true;
+    //   for (auto &vp : c.visit_points)
+    //   {
+    //     float dist = std::hypot(robot_x_ - vp.x, robot_y_ - vp.y);
+    //     if (dist < reach_threshold_)
+    //       vp.visited = true;
+    //     if (!vp.visited)
+    //       all_done = false;
+    //   }
+    //   c.all_visited = all_done;
+    // }
+    // Step 5: Check if cluster visited
     for (auto &c : clusters_)
     {
-      bool all_done = true;
-      for (auto &vp : c.visit_points)
-      {
-        float dist = std::hypot(robot_x_ - vp.x, robot_y_ - vp.y);
-        if (dist < reach_threshold_)
-          vp.visited = true;
-        if (!vp.visited)
-          all_done = false;
-      }
-      c.all_visited = all_done;
+        for (auto &vp : c.visit_points)
+        {
+            float dist = std::hypot(robot_x_ - vp.x, robot_y_ - vp.y);
+            if (dist < reach_threshold_)
+            {
+            // Mark all visiting points in this cluster as visited
+            for (auto &v : c.visit_points)
+                v.visited = true;
+            c.all_visited = true;
+            RCLCPP_INFO(this->get_logger(), "✅ Cluster at (%.2f, %.2f) marked as visited.", c.cx, c.cy);
+            break; // No need to check others
+            }
+        }
     }
+
+
 
     // Step 6: Visualize visiting points in RViz
     visualization_msgs::msg::MarkerArray markers;
