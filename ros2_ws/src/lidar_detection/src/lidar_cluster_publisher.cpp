@@ -73,6 +73,11 @@ public:
     // this->declare_parameter("possibly_wall_length_threshold", 0.5);
     // this->declare_parameter("possibly_wall_linearity_threshold", 0.005);
     // this->declare_parameter("possibly_wall_min_points", 10);
+    this->declare_parameter("obj_len_max", 1.0);
+    this->declare_parameter("wal_len_min", 2.0);
+    this->declare_parameter("wal_lin_max", 0.001); //obj_lin_min
+    this->declare_parameter("obj_nmp_min", 1);
+    this->declare_parameter("wal_nmp_min", 20);
 
 
     // ---- Get parameter values ----
@@ -87,6 +92,12 @@ public:
     this->get_parameter("max_range_ratio", max_range_ratio_);
     this->get_parameter("object_length_threshold", object_length_threshold_);
     this->get_parameter("object_max_points", object_max_points_);
+
+    this->get_parameter("obj_len_max", obj_len_max_);
+    this->get_parameter("wal_len_min", wal_len_min_);
+    this->get_parameter("wal_lin_max", wal_lin_max_);
+    this->get_parameter("obj_nmp_min", obj_nmp_min_);
+    this->get_parameter("wal_nmp_min", wal_nmp_min_);
 
     // ---- Subscribers & Publishers ----
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
@@ -202,7 +213,6 @@ private:
 
     // --- Separate wall / possibly wall / object ---
     std::vector<geometry_msgs::msg::Point> wall_points;
-    // std::vector<geometry_msgs::msg::Point> possibly_wall_points;
     std::vector<geometry_msgs::msg::Point> unknown_points;
     std::vector<geometry_msgs::msg::Point> object_points;
 
@@ -213,37 +223,22 @@ private:
       float linearity = computeLinearity(cluster);
       size_t n_points = cluster.size();
 
-      // std::string type_str = "OBJECT";
-      
-      // // detect cluster name 
-      // if (linearity < wall_linearity_threshold_ && length > wall_length_threshold_ && n_points > wall_min_points_)
-      //   type_str = "WALL";
-      // else if (linearity < possibly_wall_linearity_threshold_ && length > possibly_wall_length_threshold_)
-      //   type_str = "POSSIBLY_WALL";
-
       std::string type_str = "UNKNOWN";
 
       // --- WALL: long, straight, dense ---
-      if (linearity < wall_linearity_threshold_ &&
-          length > wall_length_threshold_ &&
-          n_points > wall_min_points_)
+      if (linearity < wal_lin_max_ &&
+          length > wal_len_min_ &&
+          n_points > wal_nmp_min_)
       {
         type_str = "WALL";
       }
 
-      // // --- OBJECT: short, few points ---
-      // else if (length < object_length_threshold_ &&
-      //         n_points < object_max_points_)
-      // {
-      //   type_str = "OBJECT";
-      // }
-
-      // --- OBJECT: short ---
-      else if (length < object_length_threshold_ )
+      // --- OBJECT: not long ---
+      else if (length < obj_len_max_ && n_points > obj_nmp_min_)
       {
         type_str = "OBJECT";
       }
-
+      
 
       RCLCPP_INFO(this->get_logger(),
                   "Cluster %zu: length=%.4f, linearity=%.5f, points=%zu → %s",
@@ -337,6 +332,13 @@ private:
   float object_length_threshold_;
   int   object_max_points_;
   float max_range_ratio_;
+
+  float obj_len_max_;
+  float wal_len_min_;
+  float wal_lin_max_;
+  int obj_nmp_min_;
+  int wal_nmp_min_;
+
 };
 
     // this->get_parameter("max_range_ratio", max_range_ratio_);
