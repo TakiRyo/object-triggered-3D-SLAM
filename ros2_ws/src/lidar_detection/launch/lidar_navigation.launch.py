@@ -20,11 +20,11 @@ def generate_launch_description():
             'object_length_threshold': 1.0,
             'object_max_points': 20,
             'max_range_ratio': 1.0,
-            'obj_len_max': 1.0,
-            'wal_len_min': 2.0,
+            'obj_len_max': 1.0, #1.0
+            'wal_len_min': 2.0, 
             'wal_lin_max': 0.001,
             'obj_nmp_min': 1,
-            'wal_nmp_min': 20,
+            'wal_nmp_min': 150,
         }]
     )
 
