@@ -16,8 +16,8 @@ def generate_launch_description():
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose', default='0.0')
-    y_pose = LaunchConfiguration('y_pose', default='0.0')
+    x_pose = LaunchConfiguration('x_pose', default='3.0')
+    y_pose = LaunchConfiguration('y_pose', default='3.0')
 
     world = os.path.join(pkg_my_gazebo, 'worlds', 'test_room.world')
 
@@ -56,7 +56,7 @@ def generate_launch_description():
     )
 
     # RViz node
-    rviz_config_path = os.path.join(pkg_my_gazebo, 'rviz', 'lidar_detection.rviz')
+    rviz_config_path = "/home/ros2_env/taki/otslam/ros2_ws/src/gazebo_turtlebot3/rviz_config/lidar_detection.rviz"
 
     rviz_node = Node(
         package='rviz2',
@@ -69,7 +69,7 @@ def generate_launch_description():
     return LaunchDescription([
         gzserver_cmd,
         gzclient_cmd,
-        # robot_state_publisher_cmd,
-        # spawn_turtlebot_cmd,
-        # rviz_node
+        robot_state_publisher_cmd,
+        spawn_turtlebot_cmd,
+        rviz_node
     ])
