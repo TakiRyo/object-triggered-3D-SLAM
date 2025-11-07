@@ -379,12 +379,25 @@
         <always_on>1</always_on>
         <update_rate>1</update_rate>
         <pose>0.064 -0.047 0.107 0 0 0</pose>
-
         <camera name="realsense_depth_camera">
+          <!-- Same horizontal FOV as RGB camera -->
+          <horizontal_fov>1.02974</horizontal_fov>
 
+          <!-- Typical depth resolution -->
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R_FLOAT32</format>  <!-- 32-bit floating-point depth -->
+          </image>
+
+          <!-- Depth range: shorter than RGB clipping -->
+          <clip>
+            <near>0.05</near>   <!-- minimum measurable distance (meters) -->
+            <far>5.0</far>      <!-- maximum measurable distance (meters) -->
+          </clip>
         </camera>
 
-  <plugin name="intel_realsense_r200_depth_driver" filename="libgazebo_ros_camera.so">
+        <plugin name="intel_realsense_r200_depth_driver" filename="libgazebo_ros_camera.so">
             <ros>
               <!-- 
                     <argument>custom_camera/image_raw:=custom_camera/custom_image</argument>
