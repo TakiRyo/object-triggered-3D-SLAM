@@ -253,5 +253,21 @@
     <child link="camera_rgb_optical_frame"/>
   </joint>
   <link name="camera_rgb_optical_frame"/>
+  
+  <!-- additional link for depth camera -->
+  <joint name="realsense_depth_joint" type="fixed">
+    <origin xyz="0.003 0.011 0.009" rpy="0 0 0"/>
+    <parent link="camera_link"/>
+    <child link="realsense_depth_frame"/>
+  </joint>
+  <link name="realsense_depth_frame"/>
+  
+  <!-- additional link for depth camera -->
+  <joint name="camera_depth_optical_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="-1.57 0 -1.57"/>
+    <parent link="realsense_depth_frame"/>
+    <child link="camera_depth_optical_frame"/>
+  </joint>
+  <link name="camera_depth_optical_frame"/>
 
 </robot>

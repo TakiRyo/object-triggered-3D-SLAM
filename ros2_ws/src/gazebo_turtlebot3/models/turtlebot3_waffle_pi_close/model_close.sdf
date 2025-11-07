@@ -367,8 +367,8 @@
       </collision>
     </link>
 
+    <!-- beginning of camera frame -->
     <link name="camera_link"/>
-
     <link name="camera_rgb_optical_frame">
       <inertial>
         <pose>0.076 0.0 0.093 0 0 0</pose>
@@ -380,7 +380,7 @@
           <iyz>0.000</iyz>
           <izz>0.001</izz>
         </inertia>
-        <mass>0.035</mass>
+        <!-- <mass>0.035</mass> -->
       </inertial>
 
       <pose>0.076 0.0 0.093 0 0 0</pose>
@@ -419,7 +419,29 @@
             <!-- <hack_baseline>0.07</hack_baseline> -->
           </plugin>
       </sensor>
-    </link>    
+    </link>
+    <!-- additional link for depth camera -->
+    <link name="camera_depth_optical_frame">
+      <sensor name="intel_realsense_r200_depth" type="depth">
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+        <update_rate>30</update_rate>
+        <camera name="realsense_depth_camera">
+        </camera>
+        <plugin name="intel_realsense_r200_depth_driver" filename="libgazebo_ros_camera.so">
+          <ros>
+            <!-- <namespace>test_cam</namespace> -->
+            <!-- <remapping>image_raw:=image_demo</remapping> -->
+            <!-- <remapping>camera_info:=camera_info_demo</remapping> -->
+          </ros>
+            <camera_name>intel_realsense_r200_depth</camera_name>
+            <!-- change frame -->
+            <frame_name>realsense_depth_frame</frame_name>  
+            <hack_baseline>0.07</hack_baseline>
+            <min_depth>0.001</min_depth>
+        </plugin>
+      </sensor>
+    </link>
 
     <joint name="base_joint" type="fixed">
       <parent>base_footprint</parent>
@@ -485,6 +507,16 @@
     <joint name="camera_rgb_joint" type="fixed">
       <parent>camera_link</parent>
       <child>camera_rgb_optical_frame</child>
+      <pose>0.003 0.011 0.009 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+
+    <!-- additional joint for depth -->
+    <joint name="realsense_depth_joint" type="fixed">
+      <parent>camera_link</parent>
+      <child>camera_depth_optical_frame</child>
       <pose>0.003 0.011 0.009 0 0 0</pose>
       <axis>
         <xyz>0 0 1</xyz>
