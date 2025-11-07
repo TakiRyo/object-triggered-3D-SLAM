@@ -11,7 +11,7 @@ def generate_launch_description():
     urdf_path = os.path.join(
         get_package_share_directory('gazebo_turtlebot3'),
         'models',
-        'turtlebot3_waffle_pi',
+        'turtlebot3_waffle',
         'model.sdf'
     )
 

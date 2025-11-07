@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Image1
         - /TF1/Tree1
         - /DepthCloud1
         - /DepthCloud1/Auto Size1
@@ -28,7 +29,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: DepthCloud
 Visualization Manager:
   Class: ""
   Displays:
@@ -96,7 +97,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /camera/image_raw
+        Value: /intel_realsense_r200_rgb/image_raw
       Value: true
     - Alpha: 0.699999988079071
       Class: rviz_default_plugins/Map
@@ -132,8 +133,6 @@ Visualization Manager:
           Value: true
         camera_depth_optical_frame:
           Value: true
-        camera_link:
-          Value: true
         camera_rgb_frame:
           Value: true
         camera_rgb_optical_frame:
@@ -148,6 +147,8 @@ Visualization Manager:
           Value: true
         realsense_depth_frame:
           Value: true
+        realsense_link:
+          Value: true
         wheel_left_link:
           Value: true
         wheel_right_link:
@@ -158,28 +159,29 @@ Visualization Manager:
       Show Axes: true
       Show Names: false
       Tree:
+        base_footprint:
+          base_link:
+            base_scan:
+              {}
+            caster_back_left_link:
+              {}
+            caster_back_right_link:
+              {}
+            imu_link:
+              {}
+            realsense_link:
+              camera_rgb_frame:
+                camera_rgb_optical_frame:
+                  {}
+              realsense_depth_frame:
+                camera_depth_optical_frame:
+                  {}
+            wheel_left_link:
+              {}
+            wheel_right_link:
+              {}
         odom:
-          base_footprint:
-            base_link:
-              base_scan:
-                {}
-              camera_link:
-                camera_rgb_frame:
-                  camera_rgb_optical_frame:
-                    {}
-                realsense_depth_frame:
-                  camera_depth_optical_frame:
-                    {}
-              caster_back_left_link:
-                {}
-              caster_back_right_link:
-                {}
-              imu_link:
-                {}
-              wheel_left_link:
-                {}
-              wheel_right_link:
-                {}
+          {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -334,7 +336,7 @@ Visualization Manager:
       Class: rviz_default_plugins/DepthCloud
       Color: 255; 255; 255
       Color Image Topic: ""
-      Color Transformer: ""
+      Color Transformer: RGB8
       Color Transport Hint: raw
       Decay Time: 0
       Depth Map Topic: /intel_realsense_r200_depth/depth/image_raw
@@ -349,7 +351,7 @@ Visualization Manager:
       Occlusion Compensation:
         Occlusion Time-Out: 30
         Value: false
-      Position Transformer: ""
+      Position Transformer: XYZ
       Queue Size: 5
       Reliability Policy: Best effort
       Selectable: true
