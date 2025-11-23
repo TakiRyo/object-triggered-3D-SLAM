@@ -143,6 +143,8 @@ Visualization Manager:
           Value: true
         imu_link:
           Value: true
+        map:
+          Value: true
         odom:
           Value: true
         realsense_depth_frame:
@@ -180,6 +182,8 @@ Visualization Manager:
               {}
             wheel_right_link:
               {}
+        map:
+          {}
         odom:
           {}
       Update Interval: 0
@@ -364,7 +368,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 62; 62; 62
-    Fixed Frame: base_link
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -407,7 +411,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 18.491634368896484
+      Distance: 25.979413986206055
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
