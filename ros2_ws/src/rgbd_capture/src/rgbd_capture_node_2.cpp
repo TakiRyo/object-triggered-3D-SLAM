@@ -1,6 +1,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <sensor_msgs/image_encodings.hpp> // Added for TYPE_32FC1
+#include <sensor_msgs/image_encodings.hpp> 
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include <tf2_ros/transform_listener.h>
@@ -123,10 +123,10 @@ private:
 
     // 2. Prepare Filenames
     std::ostringstream color_fn, depth_fn, pose_fn;
-    color_fn << output_dir_ << "/color/color_" << std::setw(4) << std::setfill('0') << count_ << ".jpg";
+    color_fn << output_dir_ << "/color/center_table_color_" << std::setw(4) << std::setfill('0') << count_ << ".jpg";
     // NOTE: Using .png for depth to preserve 16-bit accuracy
-    depth_fn << output_dir_ << "/depth/depth_" << std::setw(4) << std::setfill('0') << count_ << ".png";
-    pose_fn  << output_dir_ << "/poses/pose_"  << std::setw(4) << std::setfill('0') << count_ << ".txt";
+    depth_fn << output_dir_ << "/depth/center_table_depth_" << std::setw(4) << std::setfill('0') << count_ << ".png";
+    pose_fn  << output_dir_ << "/poses/center_table_pose_"  << std::setw(4) << std::setfill('0') << count_ << ".txt";
 
     // 3. Save RGB Image
     cv::imwrite(color_fn.str(), rgb_);

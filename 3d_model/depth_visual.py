@@ -3,8 +3,8 @@
 import cv2
 import numpy as np
 
-input_path  = "/home/ros2_env/taki/scannet_project/exported/depth/4000.png"
-output_path = "/home/ros2_env/taki/scannet_project/amc/depth_visual/4000.png"
+input_path  = "/home/ros2_env/taki/otslam/3d_model/object_scan/depth/depth_0000.png"
+output_path = "/home/ros2_env/taki/otslam/3d_model/object_scan/depth/depth_0000_visu.png"
 
 # Load depth (should be 16-bit PNG from ScanNet)
 depth = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)

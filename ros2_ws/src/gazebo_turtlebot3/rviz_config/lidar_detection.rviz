@@ -8,7 +8,6 @@ Panels:
         - /Status1
         - /Image1
         - /TF1/Tree1
-        - /DepthCloud1
         - /DepthCloud1/Auto Size1
       Splitter Ratio: 0.5759493708610535
     Tree Height: 276
@@ -103,7 +102,7 @@ Visualization Manager:
       Class: rviz_default_plugins/Map
       Color Scheme: map
       Draw Behind: false
-      Enabled: false
+      Enabled: true
       Name: Map
       Topic:
         Depth: 5
@@ -119,7 +118,7 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /map_updates
       Use Timestamp: false
-      Value: false
+      Value: true
     - Class: rviz_default_plugins/TF
       Enabled: true
       Frame Timeout: 15
@@ -161,31 +160,29 @@ Visualization Manager:
       Show Axes: true
       Show Names: false
       Tree:
-        base_footprint:
-          base_link:
-            base_scan:
-              {}
-            caster_back_left_link:
-              {}
-            caster_back_right_link:
-              {}
-            imu_link:
-              {}
-            realsense_link:
-              camera_rgb_frame:
-                camera_rgb_optical_frame:
-                  {}
-              realsense_depth_frame:
-                camera_depth_optical_frame:
-                  {}
-            wheel_left_link:
-              {}
-            wheel_right_link:
-              {}
         map:
-          {}
-        odom:
-          {}
+          odom:
+            base_footprint:
+              base_link:
+                base_scan:
+                  {}
+                caster_back_left_link:
+                  {}
+                caster_back_right_link:
+                  {}
+                imu_link:
+                  {}
+                realsense_link:
+                  camera_rgb_frame:
+                    camera_rgb_optical_frame:
+                      {}
+                  realsense_depth_frame:
+                    camera_depth_optical_frame:
+                      {}
+                wheel_left_link:
+                  {}
+                wheel_right_link:
+                  {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -345,7 +342,7 @@ Visualization Manager:
       Decay Time: 0
       Depth Map Topic: /intel_realsense_r200_depth/depth/image_raw
       Depth Map Transport Hint: raw
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 4096
@@ -364,7 +361,7 @@ Visualization Manager:
       Topic Filter: true
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 62; 62; 62
