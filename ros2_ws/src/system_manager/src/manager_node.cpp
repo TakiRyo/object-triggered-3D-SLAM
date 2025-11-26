@@ -2,7 +2,7 @@
 #include <cmath>
 #include <memory>
 #include <vector>
-#include <string> // Added for string manipulation
+#include <string>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -10,7 +10,6 @@
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "otslam_interfaces/action/scan_object.hpp"
 
-// Include your goal list header
 #include "../include/system_manager/goal_list.hpp" 
 
 using namespace std::chrono_literals;
@@ -32,12 +31,10 @@ public:
 
   SystemManager() : Node("system_manager")
   {
-    // 1. Load Goals
     goals_ = get_goal_list();
     current_goal_index_ = 0;
     state_ = State::IDLE;
 
-    // --- NEW: Print the Goal List ---
     RCLCPP_INFO(this->get_logger(), "==========================================");
     RCLCPP_INFO(this->get_logger(), "       SYSTEM MANAGER INITIALIZED         ");
     RCLCPP_INFO(this->get_logger(), "==========================================");
@@ -49,13 +46,10 @@ public:
         goal.id, goal.label.c_str(), goal.x, goal.y, goal.theta);
     }
     RCLCPP_INFO(this->get_logger(), "==========================================");
-    // --------------------------------
 
-    // 2. Action Clients
     nav_client_ = rclcpp_action::create_client<NavAction>(this, "navigate_to_pose");
     scanner_client_ = rclcpp_action::create_client<ScanAction>(this, "scan_object");
 
-    // 3. Main Loop Timer (1.0 sec interval)
     timer_ = this->create_wall_timer(
       1000ms, std::bind(&SystemManager::control_loop, this));
   }
@@ -69,14 +63,12 @@ private:
   rclcpp_action::Client<ScanAction>::SharedPtr scanner_client_;
   rclcpp::TimerBase::SharedPtr timer_;
 
-  // --- Main Logic ---
   void control_loop()
   {
     if (state_ == State::COMPLETED) return;
 
     if (state_ == State::IDLE) {
       if (current_goal_index_ < goals_.size()) {
-        // Start next goal
         send_nav_goal(goals_[current_goal_index_]);
       } else {
         RCLCPP_INFO(this->get_logger(), "ALL TASKS COMPLETED! Resting...");
@@ -85,13 +77,14 @@ private:
     }
   }
 
-  // --- Navigation Handling ---
   void send_nav_goal(const GoalData & target)
   {
-    if (!nav_client_->wait_for_action_server(2s)) {
-      RCLCPP_ERROR(this->get_logger(), "Nav2 Action Server not available!");
-      return;
+    // --- UPDATED: Better waiting logic ---
+    if (!nav_client_->wait_for_action_server(1s)) {
+      RCLCPP_WARN(this->get_logger(), "Nav2 Action Server not ready... waiting.");
+      return; // Return here allows the timer to call this again in 1s
     }
+    // -------------------------------------
 
     auto goal_msg = NavAction::Goal();
     goal_msg.pose.header.frame_id = "map";
@@ -99,7 +92,6 @@ private:
     goal_msg.pose.pose.position.x = target.x;
     goal_msg.pose.pose.position.y = target.y;
     
-    // Convert Theta (deg) to Quaternion
     double rad = target.theta * (M_PI / 180.0);
     goal_msg.pose.pose.orientation.z = sin(rad / 2.0);
     goal_msg.pose.pose.orientation.w = cos(rad / 2.0);
@@ -119,7 +111,6 @@ private:
   {
     if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
       RCLCPP_INFO(this->get_logger(), "Navigation Succeeded. Starting Scanner...");
-      // Trigger Scan
       send_scan_goal(goals_[current_goal_index_]);
     } else {
       RCLCPP_ERROR(this->get_logger(), "Navigation Failed/Canceled. Skipping goal.");
@@ -128,7 +119,6 @@ private:
     }
   }
 
-  // --- Scanner Handling ---
   void send_scan_goal(const GoalData & target)
   {
     if (!scanner_client_->wait_for_action_server(2s)) {
@@ -139,8 +129,13 @@ private:
     }
 
     auto goal_msg = ScanAction::Goal();
-    // Pass relevant data if your action definition supports it
-    // goal_msg.label = target.label; 
+    
+    // --- UPDATED: Fill in the new Action Goal fields ---
+    goal_msg.label  = target.label; 
+    goal_msg.x      = target.x;
+    goal_msg.y      = target.y;
+    goal_msg.radius = 1.0; // Default radius
+    // --------------------------------------------------
     
     state_ = State::SCANNING;
 
@@ -154,12 +149,11 @@ private:
   void scan_result_callback(const GoalHandleScan::WrappedResult & result)
   {
     if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
-      RCLCPP_INFO(this->get_logger(), "Scan Completed successfully.");
+      RCLCPP_INFO(this->get_logger(), "Scan Completed successfully: %s", result.result->message.c_str());
     } else {
       RCLCPP_ERROR(this->get_logger(), "Scan Failed.");
     }
 
-    // Move to next task
     state_ = State::IDLE;
     current_goal_index_++;
   }
