@@ -1,76 +1,168 @@
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp_action/rclcpp_action.hpp>
-#include <geometry_msgs/msg/pose_array.hpp>
-#include <otslam_interfaces/action/scan_object.hpp>
+#include <chrono>
+#include <cmath>
+#include <memory>
+#include <vector>
+#include <string> // Added for string manipulation
 
-using ScanAction = otslam_interfaces::action::ScanObject;
-using GoalHandleScan = rclcpp_action::ClientGoalHandle<ScanAction>;
+#include "rclcpp/rclcpp.hpp"
+#include "rclcpp_action/rclcpp_action.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav2_msgs/action/navigate_to_pose.hpp"
+#include "otslam_interfaces/action/scan_object.hpp"
+
+// Include your goal list header
+#include "../include/system_manager/goal_list.hpp" 
+
+using namespace std::chrono_literals;
 
 class SystemManager : public rclcpp::Node
 {
 public:
+  using NavAction = nav2_msgs::action::NavigateToPose;
+  using ScanAction = otslam_interfaces::action::ScanObject;
+  using GoalHandleNav = rclcpp_action::ClientGoalHandle<NavAction>;
+  using GoalHandleScan = rclcpp_action::ClientGoalHandle<ScanAction>;
+
+  enum class State {
+    IDLE,
+    NAVIGATING,
+    SCANNING,
+    COMPLETED
+  };
+
   SystemManager() : Node("system_manager")
   {
-    // 1. Subscribe to LiDAR
-    lidar_sub_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
-        "/detected_object_poses", 10,
-        std::bind(&SystemManager::lidar_callback, this, std::placeholders::_1));
+    // 1. Load Goals
+    goals_ = get_goal_list();
+    current_goal_index_ = 0;
+    state_ = State::IDLE;
 
-    // 2. Action Client for Scanner
+    // --- NEW: Print the Goal List ---
+    RCLCPP_INFO(this->get_logger(), "==========================================");
+    RCLCPP_INFO(this->get_logger(), "       SYSTEM MANAGER INITIALIZED         ");
+    RCLCPP_INFO(this->get_logger(), "==========================================");
+    RCLCPP_INFO(this->get_logger(), "Loaded %zu goals from list:", goals_.size());
+
+    for (const auto& goal : goals_) {
+      RCLCPP_INFO(this->get_logger(), 
+        " [ID:%d] Label: '%s' -> (X: %.2f, Y: %.2f, Theta: %.1f deg)", 
+        goal.id, goal.label.c_str(), goal.x, goal.y, goal.theta);
+    }
+    RCLCPP_INFO(this->get_logger(), "==========================================");
+    // --------------------------------
+
+    // 2. Action Clients
+    nav_client_ = rclcpp_action::create_client<NavAction>(this, "navigate_to_pose");
     scanner_client_ = rclcpp_action::create_client<ScanAction>(this, "scan_object");
 
-    RCLCPP_INFO(this->get_logger(), "System Manager (C++) Ready.");
+    // 3. Main Loop Timer (1.0 sec interval)
+    timer_ = this->create_wall_timer(
+      1000ms, std::bind(&SystemManager::control_loop, this));
   }
 
 private:
-  bool is_busy_ = false;
+  std::vector<GoalData> goals_;
+  size_t current_goal_index_;
+  State state_;
 
-  void lidar_callback(const geometry_msgs::msg::PoseArray::SharedPtr msg)
+  rclcpp_action::Client<NavAction>::SharedPtr nav_client_;
+  rclcpp_action::Client<ScanAction>::SharedPtr scanner_client_;
+  rclcpp::TimerBase::SharedPtr timer_;
+
+  // --- Main Logic ---
+  void control_loop()
   {
-    if (is_busy_ || msg->poses.empty()) return;
+    if (state_ == State::COMPLETED) return;
 
-    // Found Object!
-    auto target = msg->poses[0];
-    
-    // Check if we should process it (Simple duplicate check logic can go here)
-    start_scanning_task(target.position.x, target.position.y);
+    if (state_ == State::IDLE) {
+      if (current_goal_index_ < goals_.size()) {
+        // Start next goal
+        send_nav_goal(goals_[current_goal_index_]);
+      } else {
+        RCLCPP_INFO(this->get_logger(), "ALL TASKS COMPLETED! Resting...");
+        state_ = State::COMPLETED;
+      }
+    }
   }
 
-  void start_scanning_task(float x, float y)
+  // --- Navigation Handling ---
+  void send_nav_goal(const GoalData & target)
   {
-    is_busy_ = true;
-
-    if (!scanner_client_->wait_for_action_server(std::chrono::seconds(2))) {
-      RCLCPP_ERROR(this->get_logger(), "Scanner Agent is OFFLINE.");
-      is_busy_ = false;
+    if (!nav_client_->wait_for_action_server(2s)) {
+      RCLCPP_ERROR(this->get_logger(), "Nav2 Action Server not available!");
       return;
     }
 
-    RCLCPP_INFO(this->get_logger(), "Assigning Task: Scan Object at [%.2f, %.2f]", x, y);
-
-    auto goal = ScanAction::Goal();
-    goal.x = x;
-    goal.y = y;
-    goal.radius = 0.5;
-
-    auto options = rclcpp_action::Client<ScanAction>::SendGoalOptions();
-    options.result_callback = std::bind(&SystemManager::result_callback, this, std::placeholders::_1);
+    auto goal_msg = NavAction::Goal();
+    goal_msg.pose.header.frame_id = "map";
+    goal_msg.pose.header.stamp = this->now();
+    goal_msg.pose.pose.position.x = target.x;
+    goal_msg.pose.pose.position.y = target.y;
     
-    scanner_client_->async_send_goal(goal, options);
+    // Convert Theta (deg) to Quaternion
+    double rad = target.theta * (M_PI / 180.0);
+    goal_msg.pose.pose.orientation.z = sin(rad / 2.0);
+    goal_msg.pose.pose.orientation.w = cos(rad / 2.0);
+
+    RCLCPP_INFO(this->get_logger(), ">>> STARTING Task %d: Go to '%s'", target.id, target.label.c_str());
+
+    state_ = State::NAVIGATING;
+
+    auto send_goal_options = rclcpp_action::Client<NavAction>::SendGoalOptions();
+    send_goal_options.result_callback = 
+      std::bind(&SystemManager::nav_result_callback, this, std::placeholders::_1);
+    
+    nav_client_->async_send_goal(goal_msg, send_goal_options);
   }
 
-  void result_callback(const GoalHandleScan::WrappedResult & result)
+  void nav_result_callback(const GoalHandleNav::WrappedResult & result)
   {
     if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
-      RCLCPP_INFO(this->get_logger(), "Task Finished: %s", result.result->message.c_str());
+      RCLCPP_INFO(this->get_logger(), "Navigation Succeeded. Starting Scanner...");
+      // Trigger Scan
+      send_scan_goal(goals_[current_goal_index_]);
     } else {
-      RCLCPP_ERROR(this->get_logger(), "Task Failed.");
+      RCLCPP_ERROR(this->get_logger(), "Navigation Failed/Canceled. Skipping goal.");
+      state_ = State::IDLE;
+      current_goal_index_++; 
     }
-    is_busy_ = false; // Ready for next object
   }
 
-  rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr lidar_sub_;
-  rclcpp_action::Client<ScanAction>::SharedPtr scanner_client_;
+  // --- Scanner Handling ---
+  void send_scan_goal(const GoalData & target)
+  {
+    if (!scanner_client_->wait_for_action_server(2s)) {
+      RCLCPP_WARN(this->get_logger(), "Scanner not ready. Skipping scan, marking as done.");
+      state_ = State::IDLE;
+      current_goal_index_++;
+      return;
+    }
+
+    auto goal_msg = ScanAction::Goal();
+    // Pass relevant data if your action definition supports it
+    // goal_msg.label = target.label; 
+    
+    state_ = State::SCANNING;
+
+    auto send_goal_options = rclcpp_action::Client<ScanAction>::SendGoalOptions();
+    send_goal_options.result_callback = 
+      std::bind(&SystemManager::scan_result_callback, this, std::placeholders::_1);
+
+    scanner_client_->async_send_goal(goal_msg, send_goal_options);
+  }
+
+  void scan_result_callback(const GoalHandleScan::WrappedResult & result)
+  {
+    if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+      RCLCPP_INFO(this->get_logger(), "Scan Completed successfully.");
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "Scan Failed.");
+    }
+
+    // Move to next task
+    state_ = State::IDLE;
+    current_goal_index_++;
+  }
 };
 
 int main(int argc, char **argv) {
