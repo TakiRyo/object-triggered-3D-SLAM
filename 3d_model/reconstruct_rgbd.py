@@ -9,7 +9,7 @@ import glob
 import sys
 
 # --- CONFIGURATION ---
-base_dir = "/home/ros2_env/taki/otslam/3d_model/object_scan"
+base_dir = "/home/ros2_env/taki/otslam/3d_model/object_scan_2"
 color_dir = os.path.join(base_dir, "color")
 depth_dir = os.path.join(base_dir, "depth")
 pose_dir  = os.path.join(base_dir, "poses")
@@ -28,9 +28,9 @@ intrinsics = o3d.camera.PinholeCameraIntrinsic(width, height, fx, fy, cx, cy)
 def main():
     # 1. LOAD FILES (UPDATED to .png)
     # color_files = sorted(glob.glob(os.path.join(color_dir, "*.jpg"))) 
-    color_files = sorted(glob.glob(os.path.join(color_dir, "center_table_color_*.jpg")))
-    depth_files = sorted(glob.glob(os.path.join(depth_dir, "center_table_depth_*.png")))
-    pose_files  = sorted(glob.glob(os.path.join(pose_dir, "center_table_pose_*.txt")))
+    color_files = sorted(glob.glob(os.path.join(color_dir, "Object_0_*.jpg")))
+    depth_files = sorted(glob.glob(os.path.join(depth_dir, "Object_0_*.png")))
+    pose_files  = sorted(glob.glob(os.path.join(pose_dir, "Object_0_*.txt")))
 
     n_frames = len(color_files)
     if n_frames == 0:

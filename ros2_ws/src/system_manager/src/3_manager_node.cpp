@@ -54,22 +54,28 @@ private:
   rclcpp_action::Client<NavAction>::SharedPtr nav_client_;
   rclcpp_action::Client<ScanAction>::SharedPtr scanner_client_;
 
+  // メンバ変数に追加
+  int current_obj_id_ = 0; // ID保存用
+
   void goal_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
   {
     if (state_ != State::IDLE) return; 
 
     double new_x = msg->pose.position.x;
     double new_y = msg->pose.position.y;
+    // ★ 追加: ZからIDを取り出す
+    int new_id = (int)msg->pose.position.z;
 
     if (first_goal_received_) {
         double dist = std::hypot(new_x - last_target_x_, new_y - last_target_y_);
         if (dist < 0.05) return; 
     }
 
-    RCLCPP_INFO(this->get_logger(), ">>> NEW ORDER: (%.2f, %.2f)", new_x, new_y);
+    RCLCPP_INFO(this->get_logger(), ">>> NEW ORDER: ID:%d at (%.2f, %.2f)", new_id, new_x, new_y);
     
     last_target_x_ = new_x;
     last_target_y_ = new_y;
+    current_obj_id_ = new_id; // 保存
     first_goal_received_ = true;
 
     send_nav_goal(msg);
@@ -112,6 +118,24 @@ private:
 
   void send_scan_goal()
   {
+    // if (!scanner_client_->wait_for_action_server(2s)) {
+    //   RCLCPP_WARN(this->get_logger(), "Scanner not ready.");
+    //   state_ = State::IDLE; 
+    //   return;
+    // }
+
+    // auto goal_msg = ScanAction::Goal();
+    // std::ostringstream label_ss;
+    // label_ss << "obj_" << std::fixed << std::setprecision(1) << last_target_x_ 
+    //          << "_" << last_target_y_;
+    
+    // goal_msg.label  = label_ss.str();
+    // goal_msg.x      = last_target_x_;
+    // goal_msg.y      = last_target_y_;
+    // goal_msg.radius = 1.0; 
+    
+    // state_ = State::SCANNING;
+
     if (!scanner_client_->wait_for_action_server(2s)) {
       RCLCPP_WARN(this->get_logger(), "Scanner not ready.");
       state_ = State::IDLE; 
@@ -119,9 +143,11 @@ private:
     }
 
     auto goal_msg = ScanAction::Goal();
+    
+    // ★ 修正: ラベルを "Object_{ID}" にする
+    // Scanner側で連番を振るので、ここでは物体名だけでOK
     std::ostringstream label_ss;
-    label_ss << "obj_" << std::fixed << std::setprecision(1) << last_target_x_ 
-             << "_" << last_target_y_;
+    label_ss << "Object_" << current_obj_id_;
     
     goal_msg.label  = label_ss.str();
     goal_msg.x      = last_target_x_;

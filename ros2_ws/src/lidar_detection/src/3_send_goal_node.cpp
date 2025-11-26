@@ -148,11 +148,18 @@ private:
     }
 
     // Step 4: Publish Goal
+    // if (target_point && target_cluster)
+    // {
+    //   // --- 修正2: 中心座標も渡して、向きを計算させる ---
+    //   publishGoal(target_point, target_cluster->cx, target_cluster->cy);
+    //   // -------------------------------------------
+    // }
+
+    // Step 4: Publish Goal
     if (target_point && target_cluster)
     {
-      // --- 修正2: 中心座標も渡して、向きを計算させる ---
-      publishGoal(target_point, target_cluster->cx, target_cluster->cy);
-      // -------------------------------------------
+      // ★ 修正: IDも渡す
+      publishGoal(target_point, target_cluster->cx, target_cluster->cy, target_cluster->id);
     }
 
     // Step 5: Visualization
@@ -172,15 +179,17 @@ private:
   }
 
   // --- 修正3: 向きの計算ロジックを追加 ---
-  void publishGoal(VisitPoint* p, float center_x, float center_y) {
+  void publishGoal(VisitPoint* p, float center_x, float center_y, int cluster_id) {
       geometry_msgs::msg::PoseStamped goal;
       goal.header.frame_id = "map";
       goal.header.stamp = this->get_clock()->now();
       goal.pose.position.x = p->x;
       goal.pose.position.y = p->y;
-      goal.pose.position.z = 0.0;
+      
+      // ★ 修正: Z座標にIDを埋め込む (Hack!)
+      goal.pose.position.z = (double)cluster_id; 
+      // -------------------------------------
 
-      // Calculate Yaw: Look at the object center
       float dx = center_x - p->x;
       float dy = center_y - p->y;
       float yaw = std::atan2(dy, dx);

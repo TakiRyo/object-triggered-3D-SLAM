@@ -14,9 +14,9 @@ map_base = "/home/ros2_env/taki/otslam/2d_map"
 yaml_path = os.path.join(map_base, "2d_map.yaml")
 pgm_path  = os.path.join(map_base, "2d_map.pgm")
 #3d map
-obj_dir  = "/home/ros2_env/taki/otslam/3d_model/object_scan/3d_reconst"
+obj_dir  = "/home/ros2_env/taki/otslam/3d_model/object_scan_2/3d_reconst"
 #hybrid map
-save_path = "/home/ros2_env/taki/otslam/fusion/hybrid_maps/hybrid_map.ply"
+save_path = "/home/ros2_env/taki/otslam/fusion/hybrid_maps/hybrid_map_2.ply"
 
 def create_map_cloud(yaml_file, pgm_file):
     print(f"   -> Loading Map: {pgm_file}")

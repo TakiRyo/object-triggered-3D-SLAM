@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <map> // <--- Added for counter map
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -77,6 +78,9 @@ public:
   }
 
 private:
+  // Map to store counters for each object (e.g., "Object_0" -> 1, "Object_1" -> 3)
+  std::map<std::string, int> object_counters_; 
+
   // --- Action Handlers ---
   rclcpp_action::Server<ScanAction>::SharedPtr action_server_;
 
@@ -104,13 +108,22 @@ private:
   // --- Main Execution Logic ---
   void execute(const std::shared_ptr<GoalHandleScan> goal_handle)
   {
+    RCLCPP_INFO(this->get_logger(), ">>> Scanner Activated. Stabilizing...");
+    auto feedback = std::make_shared<ScanAction::Feedback>();
+    
+    // ==========================================================
+    // 1. Stabilization Wait (2 seconds)
+    // ==========================================================
+    feedback->current_status = "Stabilizing Camera (Wait 2s)...";
+    goal_handle->publish_feedback(feedback);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    // ==========================================================
+
+    RCLCPP_INFO(this->get_logger(), ">>> Capturing Data...");
     const auto goal = goal_handle->get_goal();
     auto result = std::make_shared<ScanAction::Result>();
-    auto feedback = std::make_shared<ScanAction::Feedback>();
 
-    RCLCPP_INFO(this->get_logger(), ">>> Starting Capture Sequence...");
-
-    // 1. Wait for fresh data (max 3 seconds)
+    // 2. Wait for fresh data (max 3 seconds)
     feedback->current_status = "Waiting for valid sensor data...";
     goal_handle->publish_feedback(feedback);
     
@@ -134,7 +147,7 @@ private:
         return;
     }
 
-    // 2. Capture Data (Copy from shared variables)
+    // 3. Capture Data (Copy from shared variables)
     cv::Mat rgb_frame, depth_frame;
     {
         std::lock_guard<std::mutex> lock(img_mutex_);
@@ -142,7 +155,7 @@ private:
         depth_frame = latest_depth_.clone();
     }
 
-    // 3. Get Transform
+    // 4. Get Transform
     feedback->current_status = "Looking up TF...";
     goal_handle->publish_feedback(feedback);
     
@@ -157,7 +170,7 @@ private:
         return;
     }
 
-    // 4. Save to Disk
+    // 5. Save to Disk
     feedback->current_status = "Saving files...";
     goal_handle->publish_feedback(feedback);
 
@@ -176,13 +189,18 @@ private:
   // --- Helper: File Saving ---
   bool save_files(const std::string& label, cv::Mat& rgb, cv::Mat& depth, const geometry_msgs::msg::TransformStamped& tf)
   {
-    // static counter to handle multiple captures of same label if needed
-    // or just use a timestamp. Here I use a simple counter member.
-    static int global_count = 0; 
-    global_count++;
+    // ==========================================================
+    // UPDATED: Logic for per-object counting (Object_0_1, Object_0_2...)
+    // ==========================================================
+    if (object_counters_.find(label) == object_counters_.end()) {
+        object_counters_[label] = 0;
+    }
+    object_counters_[label]++; 
+    int count = object_counters_[label]; 
 
     std::ostringstream base_name;
-    base_name << label << "_" << std::setw(4) << std::setfill('0') << global_count;
+    base_name << label << "_" << count; // e.g. "Object_0_1"
+    // ==========================================================
 
     std::string color_path = output_dir_ + "/color/" + base_name.str() + ".jpg";
     std::string depth_path = output_dir_ + "/depth/" + base_name.str() + ".png";
