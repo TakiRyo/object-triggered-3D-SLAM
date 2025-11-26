@@ -9,6 +9,13 @@ find_package(rclcpp_action REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(otslam_interfaces REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(image_transport REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(OpenCV REQUIRED)
 
 # 2. BUILD EXECUTABLE
 add_executable(manager_node src/manager_node.cpp)
@@ -27,6 +34,12 @@ ament_target_dependencies(scanner_node
   rclcpp
   rclcpp_action
   otslam_interfaces
+  cv_bridge
+  sensor_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 # 4. INSTALL
