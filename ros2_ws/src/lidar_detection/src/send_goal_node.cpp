@@ -26,8 +26,8 @@ public:
   GoalSender() : Node("goal_sender")
   {
     // Parameters
-    this->declare_parameter("visit_offset", 0.75);      // distance away from cluster
-    this->declare_parameter("reach_threshold", 0.5);   // distance to mark visited
+    this->declare_parameter("visit_offset", 2.0);      // distance away from cluster
+    this->declare_parameter("reach_threshold", 0.1);   // distance to mark visited
     visit_offset_ = this->get_parameter("visit_offset").as_double();
     reach_threshold_ = this->get_parameter("reach_threshold").as_double();
 

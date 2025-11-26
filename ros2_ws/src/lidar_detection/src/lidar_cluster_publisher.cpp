@@ -107,7 +107,6 @@ public:
     // possibly_wall_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/possibly_wall_clusters", 10);
     object_pub_        = this->create_publisher<sensor_msgs::msg::PointCloud2>("/object_clusters", 10);
     unknown_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/unknown_clusters", 10);
-
   }
 
 private:

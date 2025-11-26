@@ -25,7 +25,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: DepthCloud
+    SyncSource: PointCloud2_unknown
 Visualization Manager:
   Class: ""
   Displays:
@@ -288,19 +288,19 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray_stable_cluster
       Namespaces:
-        stable_clusters: true
+        objects: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /stable_clusters
+        Value: /tracked_objects
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: MarkerArray_candi_cluster
       Namespaces:
-        candidate_clusters: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -312,7 +312,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray_visiting_points
       Namespaces:
-        visiting_points: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
