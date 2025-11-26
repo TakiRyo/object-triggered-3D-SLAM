@@ -18,7 +18,7 @@ add_executable(lidar_cluster_publisher src/lidar_cluster_publisher.cpp)
 # estimate object size and publishe marker. 
 add_executable(object_goal_selector src/object_goal_selector.cpp)
 # publish goal node.
-add_executable(send_goal_node src/send_goal_node.cpp)
+add_executable(send_goal_node src/3_send_goal_node.cpp)
 
 
 ament_target_dependencies(lidar_cluster_publisher

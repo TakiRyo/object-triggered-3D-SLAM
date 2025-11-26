@@ -17,10 +17,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 
-# 2. BUILD EXECUTABLE
-add_executable(manager_node src/manager_node.cpp)
-
-# 3. LINK DEPENDENCIES
+add_executable(manager_node src/3_manager_node.cpp)
 ament_target_dependencies(manager_node
   rclcpp
   rclcpp_action
