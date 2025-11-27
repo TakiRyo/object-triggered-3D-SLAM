@@ -13,3 +13,6 @@
 /2d_map/
 
 #lidar_detection
+
+#map
+*.ply
