@@ -1,17 +1,3 @@
-/*
- * Node Name: ScannerNode
- * Role: Data Capture Action Server for 3D Reconstruction
- * * Functionality:
- * 1. Acts as a "Smart Camera Shutter" triggered via Action Goal.
- * 2. Pauses for 2 seconds to stabilize the robot (prevents motion blur).
- * 3. Captures synchronized RGB and Depth images from the camera.
- * 4. Retrieves the exact Camera-to-Map pose using TF2.
- * 5. Saves dataset files with incremental naming (e.g., Label_1, Label_2):
- * - Color: .jpg
- * - Depth: .png (Converted to 16-bit unsigned int for 3D tools)
- * - Pose:  .txt (4x4 Transformation Matrix)
- */
-
 #include <memory>
 #include <thread>
 #include <chrono>
@@ -21,7 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-#include <map> // <--- Added for counter map
+#include <map>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -40,6 +26,16 @@
 #include "tf2/LinearMath/Matrix3x3.h"
 
 using namespace std::chrono_literals;
+
+/*
+ * Node Name: ScannerNode
+ * Role: Data Capture Action Server
+ * Functionality:
+ * 1. Waits 2s (Stabilization)
+ * 2. Captures Data
+ * 3. Waits 2s (Post-Capture Cool down) <--- NEW
+ * 4. Returns Success
+ */
 
 class ScannerNode : public rclcpp::Node
 {
@@ -64,13 +60,10 @@ public:
     camera_frame_ = get_parameter("camera_frame").as_string();
     output_dir_ = get_parameter("output_dir").as_string();
 
-    // --- Directories ---
     std::filesystem::create_directories(output_dir_ + "/color");
     std::filesystem::create_directories(output_dir_ + "/depth");
     std::filesystem::create_directories(output_dir_ + "/poses");
 
-    // --- Subscribers ---
-    // Best Effort reliability is often better for sensor data
     auto qos = rclcpp::QoS(rclcpp::KeepLast(10)).best_effort();
     
     rgb_sub_ = create_subscription<sensor_msgs::msg::Image>(
@@ -79,7 +72,6 @@ public:
     depth_sub_ = create_subscription<sensor_msgs::msg::Image>(
         depth_topic_, qos, std::bind(&ScannerNode::depth_callback, this, _1));
 
-    // --- Action Server ---
     action_server_ = rclcpp_action::create_server<ScanAction>(
       this,
       "scan_object", 
@@ -87,15 +79,11 @@ public:
       std::bind(&ScannerNode::handle_cancel, this, _1),
       std::bind(&ScannerNode::handle_accepted, this, _1));
 
-    RCLCPP_INFO(this->get_logger(), "=== Real Scanner Ready ===");
-    RCLCPP_INFO(this->get_logger(), "Saving to: %s", output_dir_.c_str());
+    RCLCPP_INFO(this->get_logger(), "=== Real Scanner Ready (With Post-Wait) ===");
   }
 
 private:
-  // Map to store counters for each object (e.g., "Object_0" -> 1, "Object_1" -> 3)
   std::map<std::string, int> object_counters_; 
-
-  // --- Action Handlers ---
   rclcpp_action::Server<ScanAction>::SharedPtr action_server_;
 
   rclcpp_action::GoalResponse handle_goal(
@@ -103,14 +91,12 @@ private:
     std::shared_ptr<const ScanAction::Goal> goal)
   {
     (void)uuid;
-    RCLCPP_INFO(this->get_logger(), "Request: Capture '%s'", goal->label.c_str());
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
   rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleScan> goal_handle)
   {
     (void)goal_handle;
-    RCLCPP_INFO(this->get_logger(), "Request canceled.");
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
@@ -122,27 +108,24 @@ private:
   // --- Main Execution Logic ---
   void execute(const std::shared_ptr<GoalHandleScan> goal_handle)
   {
-    RCLCPP_INFO(this->get_logger(), ">>> Scanner Activated. Stabilizing...");
     auto feedback = std::make_shared<ScanAction::Feedback>();
+    auto result = std::make_shared<ScanAction::Result>();
+    const auto goal = goal_handle->get_goal();
     
     // ==========================================================
     // 1. Stabilization Wait (2 seconds)
     // ==========================================================
-    feedback->current_status = "Stabilizing Camera (Wait 2s)...";
+    RCLCPP_INFO(this->get_logger(), "1. Stabilizing (2s)...");
+    feedback->current_status = "Stabilizing (2s)...";
     goal_handle->publish_feedback(feedback);
     std::this_thread::sleep_for(std::chrono::seconds(2));
+
     // ==========================================================
-
-    RCLCPP_INFO(this->get_logger(), ">>> Capturing Data...");
-    const auto goal = goal_handle->get_goal();
-    auto result = std::make_shared<ScanAction::Result>();
-
-    // 2. Wait for fresh data (max 3 seconds)
-    feedback->current_status = "Waiting for valid sensor data...";
-    goal_handle->publish_feedback(feedback);
-    
+    // 2. Check Data & Capture
+    // ==========================================================
+    RCLCPP_INFO(this->get_logger(), "2. Capturing...");
     bool data_ready = false;
-    for(int i=0; i<30; i++) { // 30 * 100ms = 3sec
+    for(int i=0; i<30; i++) {
         {
             std::lock_guard<std::mutex> lock(img_mutex_);
             if(!latest_rgb_.empty() && !latest_depth_.empty()) {
@@ -154,14 +137,12 @@ private:
     }
 
     if (!data_ready) {
-        RCLCPP_ERROR(this->get_logger(), "Timeout: No Camera Data!");
         result->success = false;
         result->message = "No Image Data";
         goal_handle->abort(result);
         return;
     }
 
-    // 3. Capture Data (Copy from shared variables)
     cv::Mat rgb_frame, depth_frame;
     {
         std::lock_guard<std::mutex> lock(img_mutex_);
@@ -169,30 +150,35 @@ private:
         depth_frame = latest_depth_.clone();
     }
 
-    // 4. Get Transform
-    feedback->current_status = "Looking up TF...";
-    goal_handle->publish_feedback(feedback);
-    
+    // ==========================================================
+    // 3. TF Lookup & Save
+    // ==========================================================
     geometry_msgs::msg::TransformStamped tf_msg;
     try {
         tf_msg = tf_buffer_.lookupTransform(world_frame_, camera_frame_, tf2::TimePointZero);
     } catch (tf2::TransformException &ex) {
-        RCLCPP_ERROR(this->get_logger(), "TF Error: %s", ex.what());
         result->success = false;
         result->message = "TF Lookup Failed";
         goal_handle->abort(result);
         return;
     }
 
-    // 5. Save to Disk
-    feedback->current_status = "Saving files...";
-    goal_handle->publish_feedback(feedback);
-
     if (save_files(goal->label, rgb_frame, depth_frame, tf_msg)) {
+        
+        // ==========================================================
+        // 4. POST-SCAN WAIT (2 seconds) <--- ADDED HERE
+        // ==========================================================
+        RCLCPP_INFO(this->get_logger(), "3. Post-Scan Cool Down (2s)...");
+        feedback->current_status = "Post-Scan Wait (2s)...";
+        goal_handle->publish_feedback(feedback);
+        
+        std::this_thread::sleep_for(std::chrono::seconds(2)); 
+        // ==========================================================
+
         result->success = true;
         result->message = "Saved: " + goal->label;
         goal_handle->succeed(result);
-        RCLCPP_INFO(this->get_logger(), "<<< Capture Success: %s", goal->label.c_str());
+        RCLCPP_INFO(this->get_logger(), "4. Task Complete.");
     } else {
         result->success = false;
         result->message = "File Write Error";
@@ -200,12 +186,8 @@ private:
     }
   }
 
-  // --- Helper: File Saving ---
   bool save_files(const std::string& label, cv::Mat& rgb, cv::Mat& depth, const geometry_msgs::msg::TransformStamped& tf)
   {
-    // ==========================================================
-    // UPDATED: Logic for per-object counting (Object_0_1, Object_0_2...)
-    // ==========================================================
     if (object_counters_.find(label) == object_counters_.end()) {
         object_counters_[label] = 0;
     }
@@ -213,24 +195,20 @@ private:
     int count = object_counters_[label]; 
 
     std::ostringstream base_name;
-    base_name << label << "_" << count; // e.g. "Object_0_1"
-    // ==========================================================
+    base_name << label << "_" << count;
 
     std::string color_path = output_dir_ + "/color/" + base_name.str() + ".jpg";
     std::string depth_path = output_dir_ + "/depth/" + base_name.str() + ".png";
     std::string pose_path  = output_dir_ + "/poses/" + base_name.str() + ".txt";
 
-    // A. Save RGB
     if(!cv::imwrite(color_path, rgb)) return false;
 
-    // B. Save Depth (Process float -> uint16mm)
     cv::patchNaNs(depth, 0.0f);
-    cv::threshold(depth, depth, 5.0, 0.0, cv::THRESH_TOZERO_INV); // Cutoff > 5m
+    cv::threshold(depth, depth, 5.0, 0.0, cv::THRESH_TOZERO_INV); 
     cv::Mat depth_u16;
     depth.convertTo(depth_u16, CV_16UC1, 1000.0);
     if(!cv::imwrite(depth_path, depth_u16)) return false;
 
-    // C. Save Pose
     tf2::Quaternion q(
         tf.transform.rotation.x, tf.transform.rotation.y,
         tf.transform.rotation.z, tf.transform.rotation.w);
@@ -252,38 +230,24 @@ private:
     return true;
   }
 
-  // --- Sensor Callbacks ---
   void rgb_callback(const sensor_msgs::msg::Image::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(img_mutex_);
-    try {
-      latest_rgb_ = cv_bridge::toCvCopy(msg, "bgr8")->image;
-    } catch (cv_bridge::Exception &e) {
-      RCLCPP_ERROR(this->get_logger(), "cv_bridge RGB: %s", e.what());
-    }
+    try { latest_rgb_ = cv_bridge::toCvCopy(msg, "bgr8")->image; } catch (...) {}
   }
 
   void depth_callback(const sensor_msgs::msg::Image::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(img_mutex_);
-    try {
-      // Keep as float for processing
-      latest_depth_ = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_32FC1)->image;
-    } catch (cv_bridge::Exception &e) {
-      RCLCPP_ERROR(this->get_logger(), "cv_bridge Depth: %s", e.what());
-    }
+    try { latest_depth_ = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_32FC1)->image; } catch (...) {}
   }
 
-  // Members
   std::string rgb_topic_, depth_topic_, world_frame_, camera_frame_, output_dir_;
-  
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
-  
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
-  
-  std::mutex img_mutex_; // Thread safety
+  std::mutex img_mutex_;
   cv::Mat latest_rgb_;
   cv::Mat latest_depth_;
 };

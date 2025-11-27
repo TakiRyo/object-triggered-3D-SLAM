@@ -90,7 +90,7 @@ def main():
     mesh.compute_vertex_normals()
 
     # Save output
-    output_path = os.path.join(save_dir, "object_reconst.ply")
+    output_path = os.path.join(save_dir, "object_reconst2.ply")
     o3d.io.write_triangle_mesh(output_path, mesh)
     print(f"✅ Success! Saved to: {output_path}")
 
