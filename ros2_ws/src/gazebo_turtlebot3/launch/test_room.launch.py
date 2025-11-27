@@ -19,7 +19,7 @@ def generate_launch_description():
     x_pose = LaunchConfiguration('x_pose', default='3.0')
     y_pose = LaunchConfiguration('y_pose', default='3.0')
 
-    world = os.path.join(pkg_my_gazebo, 'worlds', 'test_room.world')
+    world = os.path.join(pkg_my_gazebo, 'worlds', 'cardboard_room.world')
 
     # Start Gazebo server
     gzserver_cmd = IncludeLaunchDescription(

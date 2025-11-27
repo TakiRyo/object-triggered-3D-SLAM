@@ -51,7 +51,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'visit_offset': 2.0,
-            'reach_threshold': 0.1,
+            'reach_threshold': 0.5,
         }]
     )
 

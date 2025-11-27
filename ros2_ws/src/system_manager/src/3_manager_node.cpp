@@ -1,3 +1,15 @@
+/*
+ * Node Name: SystemManager
+ * Role: Central State Machine for "Move & Scan" Behavior
+ * Functionality:
+ * 1. Listens for a target pose (from GoalSender).
+ * 2. Extracts the Target ID from the pose.position.z field.
+ * 3. STATE 1 (NAVIGATING): Sends goal to Nav2 to drive to the object.
+ * 4. STATE 2 (SCANNING): Upon arrival, triggers the ScannerNode to save data.
+ * 5. STATE 3 (IDLE): Resets and waits for the next target.
+ * * Prevents overlapping commands by ignoring inputs while busy.
+ */
+ 
 #include <chrono>
 #include <cmath>
 #include <memory>

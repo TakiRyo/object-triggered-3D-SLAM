@@ -1,3 +1,17 @@
+/*
+ * Node Name: ScannerNode
+ * Role: Data Capture Action Server for 3D Reconstruction
+ * * Functionality:
+ * 1. Acts as a "Smart Camera Shutter" triggered via Action Goal.
+ * 2. Pauses for 2 seconds to stabilize the robot (prevents motion blur).
+ * 3. Captures synchronized RGB and Depth images from the camera.
+ * 4. Retrieves the exact Camera-to-Map pose using TF2.
+ * 5. Saves dataset files with incremental naming (e.g., Label_1, Label_2):
+ * - Color: .jpg
+ * - Depth: .png (Converted to 16-bit unsigned int for 3D tools)
+ * - Pose:  .txt (4x4 Transformation Matrix)
+ */
+
 #include <memory>
 #include <thread>
 #include <chrono>

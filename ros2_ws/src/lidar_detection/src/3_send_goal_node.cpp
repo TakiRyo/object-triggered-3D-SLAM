@@ -1,3 +1,15 @@
+/*
+ * Node Name: GoalSender
+ * Role: Select nearest object and generate goal. 
+ * Functionality:
+ * 1. Subscribes to Stable Clusters (from ObjectTracker).
+ * 2. Generates 4 "Inspection Points" (N/S/E/W) around each object.
+ * 3. Prioritizes finishing one object before moving to the next.
+ * 4. Calculates Target Orientation so the robot always faces the object center.
+ * 5. Sends goals to SystemManager (not Nav2 directly) with Object ID embedded in Z-axis.
+ * 6. Visualizes progress: Red (Active), Green (Visited), Grey (Pending).
+ */
+
 #include <rclcpp/rclcpp.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -29,7 +41,7 @@ public:
     reach_threshold_ = this->get_parameter("reach_threshold").as_double();
 
     cluster_sub_ = this->create_subscription<visualization_msgs::msg::MarkerArray>(
-      "/stable_clusters", 10, std::bind(&GoalSender::clusterCallback, this, std::placeholders::_1));
+      "/tracked_objects", 10, std::bind(&GoalSender::clusterCallback, this, std::placeholders::_1));
 
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       "/odom", 10, std::bind(&GoalSender::odomCallback, this, std::placeholders::_1));
