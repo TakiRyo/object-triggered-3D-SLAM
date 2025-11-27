@@ -288,16 +288,16 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray_stable_cluster
       Namespaces:
-        objects: true
+        stable_clusters: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /tracked_objects
+        Value: /stable_clusters
       Value: true
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
+      Enabled: false
       Name: MarkerArray_candi_cluster
       Namespaces:
         {}
@@ -307,7 +307,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /candidate_clusters
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: MarkerArray_visiting_points
@@ -443,5 +443,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1327
-  X: 2181
-  Y: 38
+  X: 2004
+  Y: 49

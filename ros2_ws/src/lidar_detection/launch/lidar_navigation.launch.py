@@ -35,11 +35,11 @@ def generate_launch_description():
         name='object_goal_selector',
         output='screen',
         parameters=[{
-            'cluster_distance_threshold': 2.5,
+            'cluster_distance_threshold': 4.0,
             'min_cluster_points': 8,
             'wall_thickness_threshold': 0.3,
             'stability_time': 3.0,
-            'min_dist_between_stable': 5.0,
+            # 'min_dist_between_stable': 5.0,
         }]
     )
 
@@ -50,11 +50,11 @@ def generate_launch_description():
         name='goal_sender',
         output='screen',
         parameters=[{
-            'visit_offset': 2.0,
+            'visit_offset': 1.5,
             'reach_threshold': 0.5,
         }]
     )
-
+    
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_sim_time',

@@ -1,13 +1,7 @@
 /*
  * Node Name: GoalSender
  * Role: Select nearest object and generate goal. 
- * Functionality:
- * 1. Subscribes to Stable Clusters (from ObjectTracker).
- * 2. Generates 4 "Inspection Points" (N/S/E/W) around each object.
- * 3. Prioritizes finishing one object before moving to the next.
- * 4. Calculates Target Orientation so the robot always faces the object center.
- * 5. Sends goals to SystemManager (not Nav2 directly) with Object ID embedded in Z-axis.
- * 6. Visualizes progress: Red (Active), Green (Visited), Grey (Pending).
+ * Fix Applied: "First Sight Lock" to prevent goal oscillation.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -17,6 +11,7 @@
 #include <cmath>
 #include <vector>
 #include <limits>
+#include <algorithm> // for std::find_if
 
 struct VisitPoint {
   float x, y;
@@ -40,15 +35,14 @@ public:
     visit_offset_ = this->get_parameter("visit_offset").as_double();
     reach_threshold_ = this->get_parameter("reach_threshold").as_double();
 
+    // Subscribe to STABLE OBJECTS (Green markers)
     cluster_sub_ = this->create_subscription<visualization_msgs::msg::MarkerArray>(
       "/stable_clusters", 10, std::bind(&GoalSender::clusterCallback, this, std::placeholders::_1));
 
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       "/odom", 10, std::bind(&GoalSender::odomCallback, this, std::placeholders::_1));
 
-    // --- 修正1: トピック名を変更 (Nav2が反応しないようにする) ---
     goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/manager/target_pose", 10);
-    // --------------------------------------------------------
     marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/visiting_points", 10);
 
     RCLCPP_INFO(this->get_logger(), "✅ GoalSender Started (Topic: /manager/target_pose)");
@@ -66,19 +60,31 @@ private:
     // Step 1: Update clusters
     for (const auto &m : msg->markers)
     {
+      // Only care about ADD actions
+      if (m.action != visualization_msgs::msg::Marker::ADD) continue;
+
+      int incoming_id = m.id; // ID from ObjectTracker
+
+      // --- LOGIC CHANGE: Check by ID ---
+      bool already_exists = false;
+      for(const auto& c : clusters_) {
+          if(c.id == incoming_id) {
+              already_exists = true;
+              break;
+          }
+      }
+
+      // If exists, DO NOT UPDATE position. Keep the original points stable.
+      if (already_exists) continue; 
+      // ---------------------------------
+
       float cx = m.pose.position.x;
       float cy = m.pose.position.y;
       float width = m.scale.x;
       float height = m.scale.y;
-      
-      bool exists = false;
-      for (auto &c : clusters_) {
-        if (std::hypot(cx - c.cx, cy - c.cy) < 0.3) { exists = true; break; }
-      }
-      if (exists) continue;
 
       ClusterVisitInfo cluster;
-      cluster.id = clusters_.size();
+      cluster.id = incoming_id;
       cluster.cx = cx; cluster.cy = cy;
 
       float min_x = cx - width/2.0; float max_x = cx + width/2.0;
@@ -102,9 +108,10 @@ private:
         cluster.visit_points.push_back(vp);
       }
       clusters_.push_back(cluster);
+      RCLCPP_INFO(this->get_logger(), "🆕 Added Cluster ID: %d", incoming_id);
     }
 
-    // Step 2: Check Status
+    // Step 2: Check Status (Check if points are reached)
     for (auto &c : clusters_)
     {
         bool cluster_complete = true;
@@ -124,9 +131,9 @@ private:
 
     // Step 3: Priority Logic
     VisitPoint *target_point = nullptr;
-    ClusterVisitInfo *target_cluster = nullptr; // 中心座標計算用
+    ClusterVisitInfo *target_cluster = nullptr;
     
-    // Logic A: Active Cluster
+    // Logic A: Active Cluster (Finish the one we started)
     if (active_cluster_id_ != -1) {
         for(auto &c : clusters_) { if(c.id == active_cluster_id_) target_cluster = &c; }
 
@@ -139,7 +146,7 @@ private:
         }
     }
 
-    // Logic B: Global Search
+    // Logic B: Global Search (Find nearest new cluster)
     if (active_cluster_id_ == -1) {
         float min_global_dist = std::numeric_limits<float>::max();
 
@@ -160,17 +167,8 @@ private:
     }
 
     // Step 4: Publish Goal
-    // if (target_point && target_cluster)
-    // {
-    //   // --- 修正2: 中心座標も渡して、向きを計算させる ---
-    //   publishGoal(target_point, target_cluster->cx, target_cluster->cy);
-    //   // -------------------------------------------
-    // }
-
-    // Step 4: Publish Goal
     if (target_point && target_cluster)
     {
-      // ★ 修正: IDも渡す
       publishGoal(target_point, target_cluster->cx, target_cluster->cy, target_cluster->id);
     }
 
@@ -190,7 +188,6 @@ private:
       return best_p;
   }
 
-  // --- 修正3: 向きの計算ロジックを追加 ---
   void publishGoal(VisitPoint* p, float center_x, float center_y, int cluster_id) {
       geometry_msgs::msg::PoseStamped goal;
       goal.header.frame_id = "map";
@@ -198,9 +195,8 @@ private:
       goal.pose.position.x = p->x;
       goal.pose.position.y = p->y;
       
-      // ★ 修正: Z座標にIDを埋め込む (Hack!)
+      // ID Embedded in Z
       goal.pose.position.z = (double)cluster_id; 
-      // -------------------------------------
 
       float dx = center_x - p->x;
       float dy = center_y - p->y;
@@ -211,7 +207,6 @@ private:
 
       goal_pub_->publish(goal);
   }
-  // ------------------------------------
 
   void publishMarkers() {
       visualization_msgs::msg::MarkerArray markers;
@@ -230,11 +225,11 @@ private:
           m.pose.position.z = 0.1;
           m.scale.x = m.scale.y = m.scale.z = 0.15;
           if (vp.visited) {
-            m.color.g = 1.0; m.color.a = 0.8; 
+            m.color.r = 0.0; m.color.g = 1.0; m.color.b = 0.0; m.color.a = 0.8; 
           } else if (c.id == active_cluster_id_) {
-            m.color.r = 1.0; m.color.g = 1.0; m.color.a = 1.0; 
+            m.color.r = 1.0; m.color.g = 0.0; m.color.b = 0.0; m.color.a = 1.0; 
           } else {
-            m.color.r = 1.0; m.color.a = 0.5;
+            m.color.r = 0.5; m.color.g = 0.5; m.color.b = 0.5; m.color.a = 0.5;
           }
           markers.markers.push_back(m);
         }

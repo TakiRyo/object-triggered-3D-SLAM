@@ -16,10 +16,10 @@ def generate_launch_description():
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose', default='3.0')
-    y_pose = LaunchConfiguration('y_pose', default='3.0')
+    x_pose = LaunchConfiguration('x_pose', default='0.0')
+    y_pose = LaunchConfiguration('y_pose', default='0.0')
 
-    world = os.path.join(pkg_my_gazebo, 'worlds', 'cardboard_table_chairs_cones_room.world')
+    world = os.path.join(pkg_my_gazebo, 'worlds', 'cardboard_table_chairs_room.world')
 
     # Start Gazebo server
     gzserver_cmd = IncludeLaunchDescription(

@@ -24,7 +24,7 @@ public:
   : Node("object_goal_selector")
   {
     // --- Parameters ---
-    this->declare_parameter("cluster_distance_threshold", 2.5);
+    this->declare_parameter("cluster_distance_threshold", 4.0);
     this->declare_parameter("min_cluster_points", 8); 
     this->declare_parameter("wall_thickness_threshold", 0.3); //0.4 is max cuz of cardboard.  
     this->declare_parameter("stability_time", 3.0); // it doesn't matter so much.  
@@ -125,6 +125,9 @@ private:
 
       candidates.push_back({min_x, max_x, min_y, max_y, cx, cy, width, height, now, now, false});
     }
+
+    
+
 
     // --- Step 4: Compare candidates with tracked stable clusters ---
     for (const auto &cand : candidates)
