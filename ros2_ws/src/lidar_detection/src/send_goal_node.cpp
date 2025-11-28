@@ -4,20 +4,16 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <cmath>
 #include <vector>
+#include <set>
 #include <limits>
+#include <algorithm>
 
-struct VisitPoint {
-  float x, y;
-  bool visited;
-};
-
-struct ClusterVisitInfo {
-  float min_x, max_x;
-  float min_y, max_y;
-  float cx, cy;
-  float width, height;
-  std::vector<VisitPoint> visit_points;
-  bool all_visited = false;
+struct TargetPoint {
+    int unique_id;   // Marker ID
+    int object_id;   // Parent Object ID
+    float x, y;
+    // Orientation (New!)
+    float qx, qy, qz, qw;
 };
 
 class GoalSender : public rclcpp::Node
@@ -25,196 +21,155 @@ class GoalSender : public rclcpp::Node
 public:
   GoalSender() : Node("goal_sender")
   {
-    // Parameters
-    this->declare_parameter("visit_offset", 2.0);      // distance away from cluster
-    this->declare_parameter("reach_threshold", 0.1);   // distance to mark visited
-    visit_offset_ = this->get_parameter("visit_offset").as_double();
+    this->declare_parameter("reach_threshold", 0.60);
     reach_threshold_ = this->get_parameter("reach_threshold").as_double();
 
-    // Subscribers & Publishers
-    cluster_sub_ = this->create_subscription<visualization_msgs::msg::MarkerArray>(
-      "/stable_clusters", 10, std::bind(&GoalSender::clusterCallback, this, std::placeholders::_1));
+    points_sub_ = this->create_subscription<visualization_msgs::msg::MarkerArray>(
+      "/object_visiting_points", 10, 
+      std::bind(&GoalSender::pointsCallback, this, std::placeholders::_1));
 
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       "/odom", 10, std::bind(&GoalSender::odomCallback, this, std::placeholders::_1));
+    
+    goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/manager/target_pose", 10);
+    status_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/goal_status", 10);
 
-    goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/goal_pose", 10);
-    marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/visiting_points", 10);
-
-    RCLCPP_INFO(this->get_logger(), "✅ GoalSender node started.");
+    RCLCPP_INFO(this->get_logger(), "✅ GoalSender Ready. Reading Poses from Tracker.");
   }
 
 private:
-  // --- Callbacks ---
-  void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
-  {
+  void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
     robot_x_ = msg->pose.pose.position.x;
     robot_y_ = msg->pose.pose.position.y;
   }
 
-  void clusterCallback(const visualization_msgs::msg::MarkerArray::SharedPtr msg)
+  void pointsCallback(const visualization_msgs::msg::MarkerArray::SharedPtr msg)
   {
-    // Step 1: Update clusters from stable markers
-    for (const auto &m : msg->markers)
-    {
-      float cx = m.pose.position.x;
-      float cy = m.pose.position.y;
-      float width = m.scale.x;
-      float height = m.scale.y;
-      float min_x = cx - width / 2.0f;
-      float max_x = cx + width / 2.0f;
-      float min_y = cy - height / 2.0f;
-      float max_y = cy + height / 2.0f;
+    std::vector<TargetPoint> available_targets;
 
-      // Skip if this cluster already exists (near existing one)
-      bool exists = false;
-      for (auto &c : clusters_)
-      {
-        float dist = std::hypot(cx - c.cx, cy - c.cy);
-        if (dist < 0.3) { exists = true; break; }
-      }
-      if (exists) continue;
-
-      // Step 2: Create new cluster and generate 4 visiting points (midpoints of sides)
-      ClusterVisitInfo cluster;
-      cluster.cx = cx; cluster.cy = cy;
-      cluster.min_x = min_x; cluster.max_x = max_x;
-      cluster.min_y = min_y; cluster.max_y = max_y;
-      cluster.width = width; cluster.height = height;
-
-      // Midpoints (option B)
-      std::vector<std::pair<float, float>> midpoints = {
-        {(min_x + max_x)/2, min_y}, // bottom
-        {(min_x + max_x)/2, max_y}, // top
-        {min_x, (min_y + max_y)/2}, // left
-        {max_x, (min_y + max_y)/2}  // right
-      };
-
-      for (auto &p : midpoints)
-      {
-        float dx = p.first - cx;
-        float dy = p.second - cy;
-        float len = std::hypot(dx, dy);
-        VisitPoint vp;
-        vp.x = p.first + (dx / len) * visit_offset_;
-        vp.y = p.second + (dy / len) * visit_offset_;
-        vp.visited = false;
-        cluster.visit_points.push_back(vp);
-      }
-
-      clusters_.push_back(cluster);
-    }
-
-    // Step 3: Choose nearest unvisited visiting point
-    float min_dist = std::numeric_limits<float>::max();
-    VisitPoint *target = nullptr;
-    ClusterVisitInfo *target_cluster = nullptr;
-
-    for (auto &c : clusters_)
-    {
-      for (auto &vp : c.visit_points)
-      {
-        if (vp.visited) continue;
-        float dist = std::hypot(robot_x_ - vp.x, robot_y_ - vp.y);
-        if (dist < min_dist)
-        {
-          min_dist = dist;
-          target = &vp;
-          target_cluster = &c;
+    // 1. Parse incoming markers
+    for (const auto &m : msg->markers) {
+        if (m.action != visualization_msgs::msg::Marker::ADD) continue;
+        
+        TargetPoint p;
+        p.unique_id = m.id;
+        p.object_id = m.id / 10; 
+        p.x = m.pose.position.x;
+        p.y = m.pose.position.y;
+        // ★ Capture Orientation
+        p.qx = m.pose.orientation.x;
+        p.qy = m.pose.orientation.y;
+        p.qz = m.pose.orientation.z;
+        p.qw = m.pose.orientation.w;
+        
+        if (visited_ids_.find(p.unique_id) == visited_ids_.end()) {
+            available_targets.push_back(p);
         }
-      }
     }
 
-    // Step 4: Publish goal if found
-    if (target && min_dist > 0.3)
-    {
+    // 2. Check if we reached the CURRENT ACTIVE target
+    if (active_target_id_ != -1) {
+        float dist = std::hypot(robot_x_ - active_point_.x, robot_y_ - active_point_.y);
+        
+        if (dist < reach_threshold_) {
+            RCLCPP_INFO(this->get_logger(), "📍 Reached Point ID %d (Obj %d)", active_target_id_, active_target_id_/10);
+            visited_ids_.insert(active_target_id_);
+            active_target_id_ = -1;     
+        }
+    }
+
+    // 3. Select NEXT Target
+    if (active_target_id_ == -1 && !available_targets.empty()) {
+        
+        TargetPoint* best_p = nullptr;
+        float min_dist = std::numeric_limits<float>::max();
+
+        // A. Priority Search
+        if (current_object_focus_ != -1) {
+            for (auto &t : available_targets) {
+                if (t.object_id == current_object_focus_) {
+                    float d = std::hypot(robot_x_ - t.x, robot_y_ - t.y);
+                    if (d < min_dist) { min_dist = d; best_p = &t; }
+                }
+            }
+        }
+
+        // B. Global Search
+        if (best_p == nullptr) {
+            min_dist = std::numeric_limits<float>::max();
+            for (auto &t : available_targets) {
+                float d = std::hypot(robot_x_ - t.x, robot_y_ - t.y);
+                if (d < min_dist) { min_dist = d; best_p = &t; }
+            }
+        }
+
+        // C. Lock
+        if (best_p) {
+            active_target_id_ = best_p->unique_id;
+            current_object_focus_ = best_p->object_id;
+            active_point_ = *best_p; 
+            
+            RCLCPP_INFO(this->get_logger(), "🔒 Locking onto Point %d (Obj %d)", active_target_id_, current_object_focus_);
+        }
+    }
+
+    // 4. Publish Goal (Using the orientation from the tracker!)
+    if (active_target_id_ != -1) {
+        publishGoal(&active_point_);
+    }
+    
+    publishStatusMarkers(msg);
+  }
+
+  void publishGoal(TargetPoint* p) {
       geometry_msgs::msg::PoseStamped goal;
       goal.header.frame_id = "map";
       goal.header.stamp = this->get_clock()->now();
-      goal.pose.position.x = target->x;
-      goal.pose.position.y = target->y;
-      goal.pose.orientation.w = 1.0;
+      goal.pose.position.x = p->x;
+      goal.pose.position.y = p->y;
+      goal.pose.position.z = (double)p->object_id; 
+
+      // ★ Use the calculated orientation
+      goal.pose.orientation.x = p->qx;
+      goal.pose.orientation.y = p->qy;
+      goal.pose.orientation.z = p->qz;
+      goal.pose.orientation.w = p->qw;
+
       goal_pub_->publish(goal);
-
-      RCLCPP_INFO(this->get_logger(),
-                  "🎯 Sending goal to visiting point (%.2f, %.2f)", target->x, target->y);
-    }
-
-    // Step 5: Check reached points
-    // for (auto &c : clusters_)
-    // {
-    //   bool all_done = true;
-    //   for (auto &vp : c.visit_points)
-    //   {
-    //     float dist = std::hypot(robot_x_ - vp.x, robot_y_ - vp.y);
-    //     if (dist < reach_threshold_)
-    //       vp.visited = true;
-    //     if (!vp.visited)
-    //       all_done = false;
-    //   }
-    //   c.all_visited = all_done;
-    // }
-    // Step 5: Check if cluster visited
-    for (auto &c : clusters_)
-    {
-        for (auto &vp : c.visit_points)
-        {
-            float dist = std::hypot(robot_x_ - vp.x, robot_y_ - vp.y);
-            if (dist < reach_threshold_)
-            {
-            // Mark all visiting points in this cluster as visited
-            for (auto &v : c.visit_points)
-                v.visited = true;
-            c.all_visited = true;
-            RCLCPP_INFO(this->get_logger(), "✅ Cluster at (%.2f, %.2f) marked as visited.", c.cx, c.cy);
-            break; // No need to check others
-            }
-        }
-    }
-
-
-
-    // Step 6: Visualize visiting points in RViz
-    visualization_msgs::msg::MarkerArray markers;
-    int id = 0;
-    for (auto &c : clusters_)
-    {
-      for (auto &vp : c.visit_points)
-      {
-        visualization_msgs::msg::Marker m;
-        m.header.frame_id = "map";
-        m.header.stamp = this->get_clock()->now();
-        m.ns = "visiting_points";
-        m.id = id++;
-        m.type = visualization_msgs::msg::Marker::SPHERE;
-        m.action = visualization_msgs::msg::Marker::ADD;
-        m.pose.position.x = vp.x;
-        m.pose.position.y = vp.y;
-        m.pose.position.z = 0.1;
-        m.scale.x = m.scale.y = m.scale.z = 0.15;
-        if (vp.visited) {
-          m.color.g = 1.0; // green = visited
-          m.color.r = m.color.b = 0.0;
-        } else {
-          m.color.r = 1.0; // red = unvisited
-          m.color.g = m.color.b = 0.0;
-        }
-        m.color.a = 0.8;
-        markers.markers.push_back(m);
-      }
-    }
-    marker_pub_->publish(markers);
   }
 
-  // --- Members ---
-  rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr cluster_sub_;
+  void publishStatusMarkers(const visualization_msgs::msg::MarkerArray::SharedPtr input_msg) {
+      visualization_msgs::msg::MarkerArray status_array;
+      for (const auto &m : input_msg->markers) {
+          visualization_msgs::msg::Marker s = m;
+          s.ns = "status";
+          s.action = visualization_msgs::msg::Marker::ADD;
+          s.scale.x = 0.2; s.scale.y = 0.2; s.scale.z = 0.2; 
+          
+          if (visited_ids_.count(s.id)) {
+              s.color.r = 0.0; s.color.g = 1.0; s.color.b = 0.0; s.color.a = 1.0; 
+          } else if (s.id == active_target_id_) {
+              s.color.r = 1.0; s.color.g = 0.0; s.color.b = 0.0; s.color.a = 1.0; 
+          } else {
+              s.color.r = 0.5; s.color.g = 0.5; s.color.b = 0.5; s.color.a = 0.5; 
+          }
+          status_array.markers.push_back(s);
+      }
+      status_pub_->publish(status_array);
+  }
+
+  rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr points_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr status_pub_;
 
   double robot_x_ = 0.0, robot_y_ = 0.0;
-  double visit_offset_, reach_threshold_;
-  std::vector<ClusterVisitInfo> clusters_;
+  double reach_threshold_;
+  
+  std::set<int> visited_ids_;
+  int active_target_id_ = -1;
+  int current_object_focus_ = -1;
+  TargetPoint active_point_; 
 };
 
 int main(int argc, char **argv)

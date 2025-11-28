@@ -18,7 +18,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(std_srvs REQUIRED)
 
-add_executable(manager_node src/4_manager_node.cpp)
+add_executable(manager_node src/manager_node.cpp)
 ament_target_dependencies(manager_node
   rclcpp
   rclcpp_action
