@@ -39,7 +39,7 @@ def generate_launch_description():
             'min_cluster_points': 8,
             'wall_thickness_threshold': 0.3,
             'stability_time': 3.0,
-            # 'min_dist_between_stable': 5.0,
+            "smoothing_factor": 0.1,
         }]
     )
 
