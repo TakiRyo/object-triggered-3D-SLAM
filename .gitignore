@@ -9,10 +9,16 @@
 /ros2_ws/src/DynamixelSDK
 /ros2_ws/src/turtlebot3_simulations
 
+
+
 #maps
-/2d_map/
+/2d_map
+/3d_model/object_scan
+/fusion/hybrid_maps
 
-#lidar_detection
 
-#map
+#others
 *.ply
+*.png
+*.jpg
+*.txt
