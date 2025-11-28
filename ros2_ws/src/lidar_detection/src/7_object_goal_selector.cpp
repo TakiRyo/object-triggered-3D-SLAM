@@ -39,9 +39,9 @@ public:
     this->declare_parameter("min_cluster_points", 8);          
     this->declare_parameter("wall_thickness_threshold", 0.3);   
     this->declare_parameter("stability_time", 3.0);             
-    this->declare_parameter("lock_margin", 3.0);                
+    this->declare_parameter("lock_margin", 2.0);                
     this->declare_parameter("smoothing_factor", 1.0); // 1.0 = OFF 
-    this->declare_parameter("visiting_point_buffer", 0.2); 
+    this->declare_parameter("visiting_point_buffer", 0.1); 
 
     cluster_distance_threshold_ = this->get_parameter("cluster_distance_threshold").as_double();
     min_cluster_points_         = this->get_parameter("min_cluster_points").as_int();
