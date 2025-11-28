@@ -193,18 +193,35 @@ private:
             if (wrap_dist < gap_threshold_) {
               last_cluster.insert(last_cluster.end(), first_cluster.begin(), first_cluster.end());
               clusters.erase(clusters.begin());
-              RCLCPP_INFO(this->get_logger(), "Merged first and last clusters (wrap-around).");
+              // RCLCPP_INFO(this->get_logger(), "Merged first and last clusters (wrap-around).");
             }
         }
     }
 
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-                         "Detected %zu clusters (range<=%.2f m)", clusters.size(), max_use_range);
+    // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+    //                      "Detected %zu clusters (range<=%.2f m)", clusters.size(), max_use_range);
 
-    // --- TF lookup ---
+    // // --- TF lookup ---
+    // geometry_msgs::msg::TransformStamped transform;
+    // try {
+    //   transform = tf_buffer_.lookupTransform("map", "base_link", tf2::TimePointZero);
+    // } catch (const tf2::TransformException & ex) {
+    //   RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "TF not ready: %s", ex.what());
+    //   return;
+    // }
+
+    // --- TF lookup with SUCCESS Message ---
     geometry_msgs::msg::TransformStamped transform;
     try {
       transform = tf_buffer_.lookupTransform("map", "base_link", tf2::TimePointZero);
+      
+      // ★ NEW: Print success only once
+      static bool tf_found = false;
+      if (!tf_found) {
+          RCLCPP_INFO(this->get_logger(), "✅ TF Connection Established: map -> base_link");
+          tf_found = true;
+      }
+
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "TF not ready: %s", ex.what());
       return;
@@ -239,9 +256,9 @@ private:
       }
       
 
-      RCLCPP_INFO(this->get_logger(),
-                  "Cluster %zu: length=%.4f, linearity=%.5f, points=%zu → %s",
-                  idx, length, linearity, n_points, type_str.c_str());
+      // RCLCPP_INFO(this->get_logger(),
+      //             "Cluster %zu: length=%.4f, linearity=%.5f, points=%zu → %s",
+      //             idx, length, linearity, n_points, type_str.c_str());
 
       for (auto &p : cluster)
       {

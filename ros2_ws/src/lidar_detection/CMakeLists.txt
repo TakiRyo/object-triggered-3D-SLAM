@@ -11,14 +11,15 @@ find_package(visualization_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 
 # publish object and wall cluster
 add_executable(lidar_cluster_publisher src/lidar_cluster_publisher.cpp)
 # estimate object size and publishe marker. 
-add_executable(object_goal_selector src/5_object_goal_selector.cpp)
+add_executable(object_goal_selector src/7_object_goal_selector.cpp)
 # publish goal node.
-add_executable(send_goal_node src/4_send_goal_node.cpp)
+add_executable(send_goal_node src/6_send_goal_node.cpp)
 
 
 ament_target_dependencies(lidar_cluster_publisher
@@ -45,6 +46,7 @@ ament_target_dependencies(object_goal_selector
   tf2_ros
   tf2_geometry_msgs
   visualization_msgs
+  std_srvs
 )
 
 

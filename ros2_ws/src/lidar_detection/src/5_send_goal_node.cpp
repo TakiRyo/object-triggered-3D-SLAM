@@ -1,7 +1,11 @@
 /*
  * Node Name: GoalSender
- * Role: Select nearest object and generate goal. 
- * Fix Applied: "First Sight Lock" to prevent goal oscillation.
+ * Role: Select nearest object and generate visiting points DYNAMICALLY.
+ * * LOGIC UPDATE:
+ * - Instead of a fixed offset (e.g. 1.5m), we calculate the "Lock Zone" radius
+ * based on the object size (Width/Height) + Margin.
+ * - Visiting Points are placed on the perimeter of this circle.
+ * - Result: Robot stands close to small objects, and far from large objects.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -11,7 +15,7 @@
 #include <cmath>
 #include <vector>
 #include <limits>
-#include <algorithm> // for std::find_if
+#include <algorithm>
 
 struct VisitPoint {
   float x, y;
@@ -30,10 +34,24 @@ class GoalSender : public rclcpp::Node
 public:
   GoalSender() : Node("goal_sender")
   {
-    this->declare_parameter("visit_offset", 1.5);      
-    this->declare_parameter("reach_threshold", 0.60);   
-    visit_offset_ = this->get_parameter("visit_offset").as_double();
+    // --- Parameters ---
+    
+    // 1. REACH THRESHOLD (Must be > Nav2 tolerance of 0.25)
+    //    We use 0.60 to ensure GoalSender is "satisfied" easily once Nav2 stops.
+    this->declare_parameter("reach_threshold", 0.60);
+    
+    // 2. LOCK MARGIN (Must match ObjectTracker's margin)
+    //    This adds padding to the object size to define the "Red Circle".
+    this->declare_parameter("lock_margin", 0.5); 
+
+    // 3. EXTRA BUFFER
+    //    How far OUTSIDE the Red Circle should the robot stand?
+    //    0.0 = On the line. 0.2 = 20cm outside the line (Safe).
+    this->declare_parameter("extra_buffer", 0.2); 
+
     reach_threshold_ = this->get_parameter("reach_threshold").as_double();
+    lock_margin_     = this->get_parameter("lock_margin").as_double();
+    extra_buffer_    = this->get_parameter("extra_buffer").as_double();
 
     // Subscribe to STABLE OBJECTS (Green markers)
     cluster_sub_ = this->create_subscription<visualization_msgs::msg::MarkerArray>(
@@ -45,7 +63,8 @@ public:
     goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/manager/target_pose", 10);
     marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/visiting_points", 10);
 
-    RCLCPP_INFO(this->get_logger(), "✅ GoalSender Started (Topic: /manager/target_pose)");
+    RCLCPP_INFO(this->get_logger(), "✅ GoalSender Ready.");
+    RCLCPP_INFO(this->get_logger(), "   Method: Dynamic Lock Zone (Margin: %.2f + Buffer: %.2f)", lock_margin_, extra_buffer_);
   }
 
 private:
@@ -57,15 +76,13 @@ private:
 
   void clusterCallback(const visualization_msgs::msg::MarkerArray::SharedPtr msg)
   {
-    // Step 1: Update clusters
     for (const auto &m : msg->markers)
     {
-      // Only care about ADD actions
       if (m.action != visualization_msgs::msg::Marker::ADD) continue;
 
-      int incoming_id = m.id; // ID from ObjectTracker
+      int incoming_id = m.id;
 
-      // --- LOGIC CHANGE: Check by ID ---
+      // Check if ID exists (First Sight Lock)
       bool already_exists = false;
       for(const auto& c : clusters_) {
           if(c.id == incoming_id) {
@@ -73,11 +90,9 @@ private:
               break;
           }
       }
-
-      // If exists, DO NOT UPDATE position. Keep the original points stable.
       if (already_exists) continue; 
-      // ---------------------------------
 
+      // --- NEW: Calculate Dynamic Radius ---
       float cx = m.pose.position.x;
       float cy = m.pose.position.y;
       float width = m.scale.x;
@@ -87,31 +102,32 @@ private:
       cluster.id = incoming_id;
       cluster.cx = cx; cluster.cy = cy;
 
-      float min_x = cx - width/2.0; float max_x = cx + width/2.0;
-      float min_y = cy - height/2.0; float max_y = cy + height/2.0;
+      // Formula: Radius = (Diagonal / 2) + Lock Margin + Extra Buffer
+      float diagonal = std::sqrt(width*width + height*height);
+      float target_radius = (diagonal / 2.0f) + lock_margin_ + extra_buffer_;
 
+      RCLCPP_INFO(this->get_logger(), "🆕 ID %d (Size %.2fx%.2f) -> Visit Radius: %.2fm", 
+        incoming_id, width, height, target_radius);
+
+      // Generate 4 Points on the Circle
       std::vector<std::pair<float, float>> raw_points = {
-        {(min_x + max_x)/2, min_y},
-        {(min_x + max_x)/2, max_y},
-        {min_x, (min_y + max_y)/2},
-        {max_x, (min_y + max_y)/2}
+        {cx, cy + target_radius}, // North
+        {cx, cy - target_radius}, // South
+        {cx + target_radius, cy}, // East
+        {cx - target_radius, cy}  // West
       };
 
       for (auto &p : raw_points) {
-        float dx = p.first - cx;
-        float dy = p.second - cy;
-        float len = std::hypot(dx, dy);
         VisitPoint vp;
-        vp.x = p.first + (dx / len) * visit_offset_;
-        vp.y = p.second + (dy / len) * visit_offset_;
+        vp.x = p.first;
+        vp.y = p.second;
         vp.visited = false;
         cluster.visit_points.push_back(vp);
       }
       clusters_.push_back(cluster);
-      RCLCPP_INFO(this->get_logger(), "🆕 Added Cluster ID: %d", incoming_id);
     }
 
-    // Step 2: Check Status (Check if points are reached)
+    // --- Check Status ---
     for (auto &c : clusters_)
     {
         bool cluster_complete = true;
@@ -119,6 +135,8 @@ private:
         {
             if (!vp.visited) {
                 float dist = std::hypot(robot_x_ - vp.x, robot_y_ - vp.y);
+                
+                // Use the loose threshold (0.60m) to confirm arrival
                 if (dist < reach_threshold_) {
                     vp.visited = true;
                     RCLCPP_INFO(this->get_logger(), "📍 Reached point in Cluster %d", c.id);
@@ -129,11 +147,11 @@ private:
         c.all_visited = cluster_complete;
     }
 
-    // Step 3: Priority Logic
+    // --- Priority Logic ---
     VisitPoint *target_point = nullptr;
     ClusterVisitInfo *target_cluster = nullptr;
     
-    // Logic A: Active Cluster (Finish the one we started)
+    // Logic A: Finish Active Cluster
     if (active_cluster_id_ != -1) {
         for(auto &c : clusters_) { if(c.id == active_cluster_id_) target_cluster = &c; }
 
@@ -146,7 +164,7 @@ private:
         }
     }
 
-    // Logic B: Global Search (Find nearest new cluster)
+    // Logic B: Find New Cluster
     if (active_cluster_id_ == -1) {
         float min_global_dist = std::numeric_limits<float>::max();
 
@@ -166,13 +184,13 @@ private:
         }
     }
 
-    // Step 4: Publish Goal
+    // Publish Goal
     if (target_point && target_cluster)
     {
       publishGoal(target_point, target_cluster->cx, target_cluster->cy, target_cluster->id);
     }
 
-    // Step 5: Visualization
+    // Visualize
     publishMarkers();
   }
 
@@ -243,7 +261,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
   double robot_x_ = 0.0, robot_y_ = 0.0;
-  double visit_offset_, reach_threshold_;
+  double reach_threshold_, lock_margin_, extra_buffer_;
   
   std::vector<ClusterVisitInfo> clusters_;
   int active_cluster_id_ = -1; 

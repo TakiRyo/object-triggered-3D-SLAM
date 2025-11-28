@@ -39,7 +39,9 @@ def generate_launch_description():
             'min_cluster_points': 8,
             'wall_thickness_threshold': 0.3,
             'stability_time': 3.0,
-            "smoothing_factor": 0.1,
+            'lock_margin': 3.0,
+            'smoothing_factor': 1.0,
+            'visiting_point_buffer': 0.2,
         }]
     )
 
@@ -50,8 +52,7 @@ def generate_launch_description():
         name='goal_sender',
         output='screen',
         parameters=[{
-            'visit_offset': 1.5,
-            'reach_threshold': 0.5,
+            'reach_threshold': 0.60,
         }]
     )
     

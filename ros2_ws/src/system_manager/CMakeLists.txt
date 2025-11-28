@@ -16,14 +16,16 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(std_srvs REQUIRED)
 
-add_executable(manager_node src/3_manager_node.cpp)
+add_executable(manager_node src/4_manager_node.cpp)
 ament_target_dependencies(manager_node
   rclcpp
   rclcpp_action
   geometry_msgs
   otslam_interfaces
   nav2_msgs
+  std_srvs
 )
 
 add_executable(scanner_node src/scanner_node.cpp)
