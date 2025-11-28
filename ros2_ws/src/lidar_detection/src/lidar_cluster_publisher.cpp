@@ -3,42 +3,50 @@
  * LiDAR Cluster Classification Node
  * ------------------------------------------------------------
  * Purpose:
- *   Classifies LiDAR scan data into three categories:
- *     - Wall (green)
- *     - Possibly Wall (yellow)
- *     - Object (blue)
+ * Segment 2D LiDAR scans into distinct clusters and classify 
+ * them based on geometric properties (size, shape, density).
  *
  * Input:
- *   /scan  (sensor_msgs::msg::LaserScan)
+ * /scan  (sensor_msgs::msg::LaserScan)
  *
  * Output:
- *   /wall_clusters           (sensor_msgs::msg::PointCloud2)
- *   /possibly_wall_clusters  (sensor_msgs::msg::PointCloud2)
- *   /object_clusters         (sensor_msgs::msg::PointCloud2)
+ * /wall_clusters     (sensor_msgs::msg::PointCloud2) -> GREEN  [Long, straight structures]
+ * /object_clusters   (sensor_msgs::msg::PointCloud2) -> BLUE   [Small, compact obstacles]
+ * /unknown_clusters  (sensor_msgs::msg::PointCloud2) -> YELLOW [Everything else]
  *
- * How it works:
- *   1. Splits the LiDAR scan into clusters — a new cluster starts
- *      when the distance between consecutive points exceeds
- *      `gap_threshold`.
- *   2. For each cluster, computes:
- *        - Length (max spatial extent)
- *        - Linearity (via PCA)
- *        - Number of points
- *   3. Classifies clusters:
- *        - Wall: long, straight, dense
- *        - Possibly Wall: moderately long and fairly straight
- *        - Object: short or irregular
- *   4. Publishes each category as a colored PointCloud2.
+ * Logic Flow:
+ * 1. Clustering:
+ * - Iterates through scan points.
+ * - A new cluster begins if the Euclidean distance between consecutive 
+ * points > `gap_threshold`.
+ * - Merges the first and last cluster if the scan wraps around (360 degrees).
  *
- * Adjustable parameters:
- *   gap_threshold                  // distance gap for splitting clusters
- *   wall_length_threshold           // min length for wall
- *   wall_linearity_threshold        // max linearity for wall
- *   wall_min_points                 // min number of points for wall
- *   possibly_wall_length_threshold  // min length for possibly wall
- *   possibly_wall_linearity_threshold // max linearity for possibly wall
- *   max_range_ratio                 // fraction of LiDAR range to use
+ * 2. Feature Extraction (per cluster):
+ * - Length: Diagonal distance of the axis-aligned bounding box.
+ * - Linearity (PCA): Calculates covariance matrix and eigenvalues ($ \lambda_0, \lambda_1 $).
+ * Score = $ \lambda_0 / \lambda_1 $. Near 0.0 implies a perfect line.
  *
+ * 3. Classification Rules:
+ * - WALL if:
+ * Linearity < `wal_lin_max` AND 
+ * Length    > `wal_len_min` AND 
+ * Points    > `wal_nmp_min`
+ * - OBJECT if:
+ * Length    < `obj_len_max` AND 
+ * Points    > `obj_nmp_min`
+ * - Unknown:
+ * Any cluster failing both above checks (e.g., curved corners, large irregular blobs).
+ *
+ * Adjustable Parameters:
+ * - General:
+ * max_range_ratio    : Ignore points beyond this % of sensor max range.
+ * gap_threshold      : Distance (m) to break points into separate clusters.
+ * min_cluster_points : Minimum points required to form a valid cluster.
+ * wal_len_min        : Minimum length (m) to be considered a wall.
+ * wal_lin_max        : Maximum PCA ratio (0.0=line, 1.0=blob). Lower is stricter.
+ * wal_nmp_min        : Minimum point count for a wall.
+ * obj_len_max        : Maximum length (m) to be considered an object.
+ * obj_nmp_min        : Minimum point count for an object.
  * ------------------------------------------------------------
  */
 
@@ -70,12 +78,9 @@ public:
     this->declare_parameter("object_length_threshold", 1.0);
     this->declare_parameter("object_max_points", 20);
     this->declare_parameter("max_range_ratio", 1.0);
-    // this->declare_parameter("possibly_wall_length_threshold", 0.5);
-    // this->declare_parameter("possibly_wall_linearity_threshold", 0.005);
-    // this->declare_parameter("possibly_wall_min_points", 10);
     this->declare_parameter("obj_len_max", 1.0);
     this->declare_parameter("wal_len_min", 2.0);
-    this->declare_parameter("wal_lin_max", 0.001); //obj_lin_min
+    this->declare_parameter("wal_lin_max", 0.001);
     this->declare_parameter("obj_nmp_min", 1);
     this->declare_parameter("wal_nmp_min", 20);
 
@@ -86,13 +91,9 @@ public:
     this->get_parameter("wall_length_threshold", wall_length_threshold_);
     this->get_parameter("wall_linearity_threshold", wall_linearity_threshold_);
     this->get_parameter("wall_min_points", wall_min_points_);
-    // this->get_parameter("possibly_wall_length_threshold", possibly_wall_length_threshold_);
-    // this->get_parameter("possibly_wall_linearity_threshold", possibly_wall_linearity_threshold_);
-    // this->get_parameter("possibly_wall_min_points", possibly_wall_min_points_);
     this->get_parameter("max_range_ratio", max_range_ratio_);
     this->get_parameter("object_length_threshold", object_length_threshold_);
     this->get_parameter("object_max_points", object_max_points_);
-
     this->get_parameter("obj_len_max", obj_len_max_);
     this->get_parameter("wal_len_min", wal_len_min_);
     this->get_parameter("wal_lin_max", wal_lin_max_);
@@ -102,9 +103,7 @@ public:
     // ---- Subscribers & Publishers ----
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "/scan", 10, std::bind(&LidarClusterPublisher::scanCallback, this, std::placeholders::_1));
-
     wall_pub_          = this->create_publisher<sensor_msgs::msg::PointCloud2>("/wall_clusters", 10);
-    // possibly_wall_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/possibly_wall_clusters", 10);
     object_pub_        = this->create_publisher<sensor_msgs::msg::PointCloud2>("/object_clusters", 10);
     unknown_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/unknown_clusters", 10);
   }

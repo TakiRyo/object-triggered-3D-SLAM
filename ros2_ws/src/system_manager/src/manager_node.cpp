@@ -1,16 +1,50 @@
-/*
+/**
+ * -----------------------------------------------------------------------
  * Node Name: SystemManager
- * Role: Central State Machine for "Move & Scan" Behavior
- * Functionality:
- * 1. Listens for a target pose (from GoalSender).
- * 2. Extracts the Target ID from the pose.position.z field.
- * 3. STATE 1 (NAVIGATING): Sends goal to Nav2 to drive to the object.
- * 4. STATE 2 (SCANNING): Upon arrival, triggers the ScannerNode to save data.
- * 5. STATE 3 (IDLE): Resets and waits for the next target.
- * * Tracking Logic (Lidar vs Camera Time):
- * - Switches to "Lidar Detection Time" (Active) ONLY when searching for a NEW object.
- * - Switches to "Camera Detection Time" (Frozen) upon arriving at any visiting point.
- * - Keeps "Frozen" while moving between points of the SAME object.
+ * -----------------------------------------------------------------------
+ * Purpose:
+ * The central orchestrator (State Machine) for the "Move & Scan" mission.
+ * It connects the Mission Manager (GoalSender), the Pilot (Nav2), 
+ * the Photographer (ScannerNode), and the Tracker (ObjectClusterMarker).
+ *
+ * Role:
+ * 1. Receives a target pose (Position + Orientation + Object ID).
+ * 2. Navigates the robot to that pose.
+ * 3. Upon arrival, triggers the precise data capture sequence.
+ * 4. Manages the "Lidar vs. Camera" mode switching.
+ *
+ * Inputs:
+ * /manager/target_pose (geometry_msgs::PoseStamped)
+ * - From GoalSender. Contains the goal coordinates and the Object ID (in z).
+ *
+ * Actions & Services:
+ * - Client: navigate_to_pose (Nav2) -> Moves the robot.
+ * - Client: scan_object (ScannerNode) -> Captures Data.
+ * - Client: set_tracking_mode (Service) -> Freezes/Unfreezes the object tracker.
+ *
+ * -----------------------------------------------------------------------
+ * ★ SMART TRACKING STRATEGY (The "Freeze" Logic) ★
+ * -----------------------------------------------------------------------
+ * The critical logic in `goal_callback` handles when to trust the Lidar 
+ * and when to trust the Memory (Frozen state):
+ *
+ * 1. NEW Object (ID changed):
+ * Action: UNFREEZE (Enable Lidar Tracking).
+ * Reason: We are approaching a new target. We need live Lidar data 
+ * to find exactly where it is and center our markers.
+ *
+ * 2. SAME Object (ID unchanged, moving to next view):
+ * Action: KEEP FROZEN.
+ * Reason: We have already locked onto this object. As we move around 
+ * it, parts of the object might become occluded, causing the center 
+ * to shift wildly if we used live data. Keeping it frozen ensures 
+ * all 4 visiting points remain relative to the *original* detected center.
+ *
+ * 3. ARRIVAL (Nav Success):
+ * Action: FORCE FREEZE.
+ * Reason: Ensure the coordinates are absolutely static during the 
+ * 5-second camera stabilization phase.
+ * -----------------------------------------------------------------------
  */
 
 #include <chrono>

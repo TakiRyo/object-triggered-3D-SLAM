@@ -1,9 +1,52 @@
-/*
+/**
+ * -----------------------------------------------------------------------
  * Node Name: ObjectClusterMarker
- * Role: 
- * 1. Detects Objects & Tracks them.
- * 2. Generates Visiting Points on the Lock Zone Circle.
- * 3. ***NEW***: Calculates Orientation so points face the Object Center.
+ * -----------------------------------------------------------------------
+ * Purpose:
+ * 1. Tracks distinct objects over time (Temporal Persistence).
+ * 2. Filters noise by requiring objects to be stable for `stability_time`.
+ * 3. Generates "Visiting Points" (Goals) around the object.
+ * 4. Freezes the map state via service for navigation tasks.
+ *
+ * Input:
+ * /object_clusters (sensor_msgs::msg::PointCloud2)
+ * - A single cloud containing points classified as "Objects" by the previous node.
+ *
+ * Output:
+ * /candidate_clusters   (MarkerArray) -> YELLOW Boxes (Unstable/New detections)
+ * /stable_clusters      (MarkerArray) -> GREEN Boxes  (Confirmed objects)
+ * /debug_lock_zones     (MarkerArray) -> RED Cylinders (The "Keep-Out" or "Lock" zone)
+ * /object_visiting_points (MarkerArray) -> CYAN Arrows (Navigation Goals)
+ *
+ * Logic Flow:
+ * 1. Re-Clustering:
+ * Incoming points are grouped into individual clusters using Euclidean distance.
+ * 2. Data Association:
+ * - New clusters are matched to existing 'Stable' objects first.
+ * - If no match, they are matched to 'Candidate' objects.
+ * - If still no match, a new 'Candidate' is created.
+ * 3. State Machine:
+ * - Candidate -> Stable: If tracked consistently for > `stability_time`.
+ * - Candidate -> Deleted: If not seen for > 0.5 seconds.
+ * 4. Goal Generation (The "Visiting Points"):
+ * - Creates 4 points (North, South, East, West) around the object's lock zone.
+ * - **Orientation Calculation**:
+ * The orientation (Yaw) is calculated so the arrow points **FROM** the visiting point
+ * **TO** the center of the object.
+ * Formula: yaw = atan2(object_cy - point_y, object_cx - point_x)
+ *
+ * Services:
+ * /set_tracking_mode (std_srvs::SetBool)
+ * - True: Updates positions based on LiDAR (Live Tracking).
+ * - False: Freezes markers in place (allows robot to navigate to them without
+ * the goal jumping around due to sensor noise).
+ *
+ * Adjustable Parameters:
+ * stability_time        : Seconds a cluster must exist to become "Stable".
+ * lock_margin           : Extra padding added to object radius for the lock zone.
+ * visiting_point_buffer : Distance from the lock zone to the goal points.
+ * smoothing_factor      : 0.0 to 1.0. Higher = faster updates, Lower = smoother motion.
+ * -----------------------------------------------------------------------
  */
 
 #include <rclcpp/rclcpp.hpp>

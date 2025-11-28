@@ -1,3 +1,58 @@
+/**
+ * -----------------------------------------------------------------------
+ * Node Name: ScannerNode
+ * -----------------------------------------------------------------------
+ * Purpose:
+ * Acts as the Data Capture Action Server for the OTSLAM system.
+ * It coordinates the camera and robot state to save a synchronized snapshot
+ * of the environment (RGB Image + Depth Image + Camera Pose).
+ *
+ * Action Interface:
+ * otslam_interfaces::action::ScanObject
+ * - Goal: Label (string) -> e.g., "box"
+ * - Result: Success/Failure status
+ *
+ * Inputs:
+ * /rgb_topic   (sensor_msgs::Image) : Color stream
+ * /depth_topic (sensor_msgs::Image) : Aligned depth stream
+ * /tf          (tf2)                : Robot localization data
+ *
+ * Outputs (FileSystem):
+ * Saves data to `output_dir` in the following structure:
+ * - /color/label_N.jpg   : Standard RGB image
+ * - /depth/label_N.png   : 16-bit PNG (Depth in millimeters)
+ * - /poses/label_N.txt   : 4x4 Transformation Matrix (World -> Camera)
+ *
+ * Execution Logic (The "Stop-and-Stare" Routine):
+ * 1. Buffer Flush:
+ * Immediately clears the `latest_rgb_` and `latest_depth_` variables.
+ * This ensures we do not save "stale" images from when the robot was moving.
+ *
+ * 2. Stabilization Wait (Pre-Scan):
+ * Sleeps for `wait_time` (default 5.0s). This allows the robot's physical
+ * vibrations to settle and ensures the camera buffer fills with *stationary* frames.
+ *
+ * 3. Capture & Verify:
+ * Checks if new images have arrived during the wait. If valid, locks the
+ * mutex and clones the data.
+ *
+ * 4. Save & Convert:
+ * - rgb: Saved as JPG.
+ * - Depth: NaN values patched to 0, converted to Millimeters (uint16).
+ * - Pose: TF lookup (Map -> Camera) saved as a standard 4x4 Matrix.
+ *
+ * 5. Cool Down (Post-Scan):
+ * Sleeps for `wait_time` again before returning "Success".
+ * This prevents the Client from commanding the robot to move immediately,
+ * ensuring the write operation is safe and the robot doesn't jerk away.
+ *
+ * Parameters:
+ * wait_time (5.0s) : Time to wait BEFORE capturing and AFTER capturing.
+ * output_dir       : Base path for saving datasets.
+ * -----------------------------------------------------------------------
+ */
+
+
 #include <memory>
 #include <thread>
 #include <chrono>

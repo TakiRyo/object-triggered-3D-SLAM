@@ -1,3 +1,45 @@
+/**
+ * -----------------------------------------------------------------------
+ * Node Name: RGBDCaptureNode (Debug / Manual Tool)
+ * -----------------------------------------------------------------------
+ * Purpose:
+ * Acts as a "Manual Shutter" for creating datasets or debugging.
+ * Instead of the robot deciding when to scan, this node opens a window
+ * and lets the human operator capture specific frames by pressing a key.
+ *
+ * *Usage*:
+ * 1. Launch node -> An OpenCV window "RGB Preview" appears.
+ * 2. Move robot to desired angle.
+ * 3. Press [SPACE] to save the current frame (RGB + Depth + Pose).
+ * 4. Press [ESC] to quit.
+ *
+ * Input:
+ * /rgb_topic   (sensor_msgs::Image) : Live color stream.
+ * /depth_topic (sensor_msgs::Image) : Live depth stream (Float, Meters).
+ * /tf          (tf2)                : Robot position in Map frame.
+ *
+ * Output (Files):
+ * Saves synchronized data to `output_dir` for external processing (e.g., TSDF Fusion):
+ * - Color (.jpg) : Standard image.
+ * - Depth (.png) : 16-bit Integer format (Unit: Millimeters).
+ * - Pose  (.txt) : 4x4 Matrix (World -> Camera).
+ *
+ * Critical Logic - Depth Conversion:
+ * Raw ROS depth is usually 32-bit Float (Meters). To save as a standard
+ * depth PNG, we must convert it:
+ * 1. Patch NaNs: Replace invalid pixels (glare/infinity) with 0.
+ * 2. Threshold: Ignore points > 5.0 meters (removes background noise).
+ * 3. Scale: Multiply by 1000 (1.25m -> 1250mm).
+ * 4. Cast: Convert to `uint16`.
+ *
+ * Critical Logic - The Loop:
+ * Unlike standard ROS nodes, this uses a custom `while` loop with 
+ * `cv::waitKey(1)`. This is required to process keyboard events 
+ * from the OpenCV window in real-time.
+ * -----------------------------------------------------------------------
+ */
+
+
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/image_encodings.hpp> 
