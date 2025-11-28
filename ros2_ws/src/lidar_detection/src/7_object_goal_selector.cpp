@@ -1,10 +1,9 @@
 /*
  * Node Name: ObjectClusterMarker
  * Role: 
- * 1. Detects Objects from Lidar.
- * 2. Tracks them (Stable/Green vs Candidate/Yellow).
- * 3. Manages "Lock Zone" (Red Circle).
- * 4. ***NEW***: Generates and Publishes Visiting Points (Blue Spheres) based on Lock Zone.
+ * 1. Detects Objects & Tracks them.
+ * 2. Generates Visiting Points on the Lock Zone Circle.
+ * 3. ***NEW***: Calculates Orientation so points face the Object Center.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -35,12 +34,12 @@ public:
   ObjectClusterMarker()
   : Node("object_goal_selector")
   {
-    this->declare_parameter("cluster_distance_threshold", 4.0);
+    this->declare_parameter("cluster_distance_threshold", 0.4);
     this->declare_parameter("min_cluster_points", 8);          
     this->declare_parameter("wall_thickness_threshold", 0.3);   
     this->declare_parameter("stability_time", 3.0);             
     this->declare_parameter("lock_margin", 2.0);                
-    this->declare_parameter("smoothing_factor", 1.0); // 1.0 = OFF 
+    this->declare_parameter("smoothing_factor", 1.0); 
     this->declare_parameter("visiting_point_buffer", 0.1); 
 
     cluster_distance_threshold_ = this->get_parameter("cluster_distance_threshold").as_double();
@@ -59,14 +58,14 @@ public:
     stable_pub_    = this->create_publisher<visualization_msgs::msg::MarkerArray>("/stable_clusters", 10);
     debug_pub_     = this->create_publisher<visualization_msgs::msg::MarkerArray>("/debug_lock_zones", 10);
     
-    // ★ NEW PUBLISHER: Visiting Points
+    // Publishes Markers with correct Position AND Orientation
     goal_pub_      = this->create_publisher<visualization_msgs::msg::MarkerArray>("/object_visiting_points", 10);
 
     mode_service_ = this->create_service<std_srvs::srv::SetBool>(
         "set_tracking_mode",
         std::bind(&ObjectClusterMarker::handleModeSwitch, this, std::placeholders::_1, std::placeholders::_2));
 
-    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready. Publishing Visiting Points.");
+    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready.");
   }
 
 private:
@@ -101,6 +100,10 @@ private:
     target.width  = (target.width * (1.0f - smoothing_factor_)) + (source.width * smoothing_factor_);
     target.height = (target.height * (1.0f - smoothing_factor_)) + (source.height * smoothing_factor_);
     target.lock_radius = calculateLockRadius(target.width, target.height);
+  }
+
+  void absorbToStable(TrackedCluster &target, rclcpp::Time now) {
+      target.last_seen = now; 
   }
 
   void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -154,7 +157,7 @@ private:
         bool matched = false;
         for (auto &stable : stable_objects_) {
             if (std::hypot(raw.cx - stable.cx, raw.cy - stable.cy) < stable.lock_radius) {
-                updateCluster(stable, raw, now); matched = true; break;
+                absorbToStable(stable, now); matched = true; break;
             }
         }
         if (matched) continue;
@@ -189,7 +192,6 @@ private:
       visualization_msgs::msg::MarkerArray candidate_array, stable_array, debug_array, goals_array;
       int id = 0;
 
-      // Color logic: Active=Green, Frozen=Blue
       float r=0.0f, g=tracking_enabled_?1.0f:0.0f, b=tracking_enabled_?0.0f:1.0f;
 
       for (const auto &c : stable_objects_) {
@@ -213,8 +215,7 @@ private:
           zone.color.r = 1.0; zone.color.a = 0.1;
           debug_array.markers.push_back(zone);
 
-          // 3. ★ VISITING POINTS (Blue Spheres) ★
-          // Logic: Points on circle = Lock Radius + Buffer
+          // 3. ★ VISITING POINTS with ORIENTATION ★
           float vp_radius = c.lock_radius + visiting_point_buffer_;
           std::vector<std::pair<float, float>> vps = {
               {c.cx, c.cy + vp_radius}, {c.cx, c.cy - vp_radius},
@@ -225,20 +226,31 @@ private:
               visualization_msgs::msg::Marker p;
               p.header.frame_id = frame_id; p.header.stamp = now;
               p.ns = "visiting_points"; 
-              // ID Encoding: Object ID * 10 + 0..3 (e.g., Object 5 -> 50, 51, 52, 53)
-              // We cast object address to int or use a counter. 
-              // Since stable_objects_ is a vector, we need a persistent ID. 
-              // For now, let's use the index in the vector as the ID.
-              // Note: Ideally TrackedCluster should have a unique 'int id'.
-              // I will assume index for now.
-              int obj_id_index = &c - &stable_objects_[0]; // Get index
+              // ID Encoding: Object ID * 10 + Point Index
+              int obj_id_index = &c - &stable_objects_[0]; 
               p.id = (obj_id_index * 10) + i; 
 
-              p.type = visualization_msgs::msg::Marker::SPHERE;
+              p.type = visualization_msgs::msg::Marker::ARROW; // Changed to ARROW to see orientation
               p.action = visualization_msgs::msg::Marker::ADD;
-              p.pose.position.x = vps[i].first; p.pose.position.y = vps[i].second; p.pose.position.z = 0.3;
-              p.scale.x = 0.15; p.scale.y = 0.15; p.scale.z = 0.15;
-              p.color.r = 0.0; p.color.g = 1.0; p.color.b = 1.0; p.color.a = 0.9; // Cyan
+              p.pose.position.x = vps[i].first; 
+              p.pose.position.y = vps[i].second; 
+              p.pose.position.z = 0.2;
+
+              // --- CALCULATE ORIENTATION (Face Center) ---
+              // Vector from Point to Center
+              float dx = c.cx - vps[i].first;
+              float dy = c.cy - vps[i].second;
+              float yaw = std::atan2(dy, dx);
+
+              // Manual Quaternion Conversion (Yaw -> Quat)
+              p.pose.orientation.w = cos(yaw * 0.5);
+              p.pose.orientation.z = sin(yaw * 0.5);
+              p.pose.orientation.x = 0.0;
+              p.pose.orientation.y = 0.0;
+              // -------------------------------------------
+
+              p.scale.x = 0.3; p.scale.y = 0.05; p.scale.z = 0.05; // Arrow size
+              p.color.r = 0.0; p.color.g = 1.0; p.color.b = 1.0; p.color.a = 0.9;
               goals_array.markers.push_back(p);
           }
       }
@@ -257,7 +269,7 @@ private:
       stable_pub_->publish(stable_array);
       candidate_pub_->publish(candidate_array);
       debug_pub_->publish(debug_array);
-      goal_pub_->publish(goals_array); // ★ Publish the Points!
+      goal_pub_->publish(goals_array); 
   }
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr object_sub_;
