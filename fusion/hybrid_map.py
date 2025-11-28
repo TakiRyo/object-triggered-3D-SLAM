@@ -20,7 +20,7 @@ pgm_path  = os.path.join(map_base, "map_nov27.pgm")
 obj_dir  = "/home/ros2_env/taki/otslam/3d_model/object_scan_2/3d_reconst"
 
 # Output
-save_path = "/home/ros2_env/taki/otslam/fusion/hybrid_maps/hybrid_map_5.ply"
+save_path = "/home/ros2_env/taki/otslam/fusion/hybrid_maps/hybrid_map_6.ply"
 
 def create_map_cloud(yaml_file, pgm_file):
     print(f"   -> Loading Map: {pgm_file}")
