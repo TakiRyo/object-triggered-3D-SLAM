@@ -1,10 +1,10 @@
 /*
  * Node Name: ObjectClusterMarker
- * Updates:
- * - DYNAMIC VISITING POINTS:
- * - Small objects (< 1.0m) -> 4 Points
- * - Large objects (> 1.0m) -> 6 Points
- * - Uses trigonometry to place points in a perfect circle.
+ * Role: Tracker & Goal Generator
+ * Update: 
+ * - Adaptive Scanning Density (Configurable)
+ * - Normal Objects (< Threshold) -> 6 Points
+ * - Big Objects (> Threshold) -> 8 Points
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -36,6 +36,7 @@ public:
   ObjectClusterMarker()
   : Node("object_goal_selector")
   {
+    // --- Parameters ---
     this->declare_parameter("cluster_distance_threshold", 0.4);
     this->declare_parameter("min_cluster_points", 10);          
     this->declare_parameter("wall_thickness_threshold", 0.2);   
@@ -43,9 +44,9 @@ public:
     this->declare_parameter("lock_margin", 0.5);                
     this->declare_parameter("smoothing_factor", 1.0); 
     this->declare_parameter("visiting_point_buffer", 0.2); 
-    
-    // NEW: Threshold to switch from 4 to 6 points
-    this->declare_parameter("scan_step_threshold", 1.0); 
+    this->declare_parameter("scan_step_threshold", 1.0); // Size to switch modes (meters)
+    this->declare_parameter("points_count_normal", 6);   // Points for small objects
+    this->declare_parameter("points_count_big", 8);      // Points for big objects
 
     cluster_distance_threshold_ = this->get_parameter("cluster_distance_threshold").as_double();
     min_cluster_points_         = this->get_parameter("min_cluster_points").as_int();
@@ -54,8 +55,12 @@ public:
     lock_margin_                = this->get_parameter("lock_margin").as_double();
     smoothing_factor_           = this->get_parameter("smoothing_factor").as_double();
     visiting_point_buffer_      = this->get_parameter("visiting_point_buffer").as_double();
+    
     scan_step_threshold_        = this->get_parameter("scan_step_threshold").as_double();
+    points_count_normal_        = this->get_parameter("points_count_normal").as_int();
+    points_count_big_           = this->get_parameter("points_count_big").as_int();
 
+    // --- Subscribers & Publishers ---
     object_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       "/object_clusters", 10,
       std::bind(&ObjectClusterMarker::cloudCallback, this, std::placeholders::_1));
@@ -71,7 +76,9 @@ public:
         "set_tracking_mode",
         std::bind(&ObjectClusterMarker::handleModeSwitch, this, std::placeholders::_1, std::placeholders::_2));
 
-    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready. Adaptive Scanning Active.");
+    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready.");
+    RCLCPP_INFO(this->get_logger(), "   - Scan Logic: Normal=%d, Big=%d (Threshold: %.1fm)", 
+        points_count_normal_, points_count_big_, scan_step_threshold_);
   }
 
 private:
@@ -224,9 +231,9 @@ private:
           // 3. ★ ADAPTIVE VISITING POINTS ★
           float vp_radius = c.lock_radius + visiting_point_buffer_;
           
-          // Logic: If object diagonal > threshold, take 6 photos. Else 4.
+          // Logic: Dynamic Point Count based on Parameters
           float diagonal = std::sqrt(c.width*c.width + c.height*c.height);
-          int num_points = (diagonal > scan_step_threshold_) ? 6 : 4;
+          int num_points = (diagonal > scan_step_threshold_) ? points_count_big_ : points_count_normal_;
 
           for (int i=0; i<num_points; i++) {
               visualization_msgs::msg::Marker p;
@@ -234,7 +241,7 @@ private:
               p.ns = "visiting_points"; 
               
               // ID Encoding: Object ID * 10 + Point Index
-              // Note: If you use more than 10 points, change this to *100
+              // Since max points might be 8, multiplier 10 is still safe (0-9).
               int obj_id_index = &c - &stable_objects_[0]; 
               p.id = (obj_id_index * 10) + i; 
 
@@ -242,7 +249,6 @@ private:
               p.action = visualization_msgs::msg::Marker::ADD;
               
               // Calculate Point on Circle using Trig
-              // angle = 0, 90, 180... (for 4) OR 0, 60, 120... (for 6)
               float angle = (2.0 * M_PI / num_points) * i;
               
               p.pose.position.x = c.cx + vp_radius * std::cos(angle);
@@ -250,8 +256,6 @@ private:
               p.pose.position.z = 0.2;
 
               // Orientation (Face Center)
-              // Vector from Point to Center (Opposite of radius vector)
-              // Angle to center = angle + PI (since point is at 'angle')
               float yaw = angle + M_PI; 
 
               p.pose.orientation.w = std::cos(yaw * 0.5);
@@ -287,8 +291,8 @@ private:
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr mode_service_;
 
   double cluster_distance_threshold_, wall_thickness_threshold_, stability_time_, lock_margin_, smoothing_factor_, visiting_point_buffer_;
-  double scan_step_threshold_; // New Param
-  int min_cluster_points_;
+  double scan_step_threshold_; 
+  int min_cluster_points_, points_count_normal_, points_count_big_;
 };
 
 int main(int argc, char **argv) {
