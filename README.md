@@ -1,21 +1,25 @@
+I understand. You're looking for the complete text of the updated README without the file generation syntax. Here is the full, revised system documentation, which now explicitly highlights the adaptive goal generation logic:
+
+-----
+
 # OTSLAM: Active Object Scanning System
 
 ## 📖 System Overview
 
-This project implements an autonomous "Move & Scan" pipeline. It utilizes 2D LiDAR to detect and classify objects in the environment, tracks them over time, and coordinates a mobile robot to navigate around them. Upon reaching specific viewpoints, the robot stabilizes and captures synchronized RGB-D data and camera poses for 3D reconstruction.
+This project implements an autonomous **"Move & Scan"** pipeline for structured 3D reconstruction. It utilizes 2D LiDAR data to detect and classify objects in the environment, tracks their persistence over time, and coordinates a mobile robot to navigate around them. Upon reaching specific viewpoints, the robot stabilizes and captures synchronized RGB-D data and camera poses for high-quality 3D mapping.
 
 ### The Pipeline
 
 1.  **Perception (`lidar_detection`)**: Raw LiDAR data is segmented into clusters. Walls are filtered out, and compact objects are tracked.
-2.  **Mission Planning (`lidar_detection`)**: The system generates "Visiting Points" (Goals) around detected objects.
-3.  **Orchestration (`system_manager`)**: A central manager commands the robot to drive to these points using **Nav2**.
-4.  **Data Capture (`system_manager`)**: Once arrived, the robot freezes and captures high-quality dataset frames.
+2.  **Mission Planning (`lidar_detection`)**: The system generates **Adaptive Visiting Points** (Goals) around detected stable objects.
+3.  **Orchestration (`system_manager`)**: A central manager commands the robot to drive to these points using the **Nav2** stack.
+4.  **Data Capture (`system_manager`)**: Once arrived, the robot freezes its movement and triggers the camera system to capture high-quality dataset frames.
 
 -----
 
 ## 📦 Package 1: Lidar Detection
 
-*Focus: Raw Sensor Processing, Classification, and Tracking.*
+*Focus: Raw Sensor Processing, Classification, and Object Tracking.*
 
 ### 1\. 🧩 LiDAR Cluster Classification
 
@@ -24,10 +28,10 @@ This project implements an autonomous "Move & Scan" pipeline. It utilizes 2D LiD
 Segments 2D LiDAR scans into distinct clusters and classifies them based on geometric properties (PCA linearity, size, density).
 
   * **Logic:**
-    1.  **Clustering:** Groups points based on Euclidean distance (`gap_threshold`).
+    1.  **Clustering:** Groups points based on Euclidean distance ($\text{gap\_threshold}$).
     2.  **PCA Analysis:** Calculates eigenvalues ($\lambda_0, \lambda_1$) to determine if a cluster is linear or blob-like.
     3.  **Classification:**
-          * 🟩 **Wall:** Long, straight, dense.
+          * 🟩 **Wall:** Long, straight, dense, high linearity.
           * 🟦 **Object:** Short, compact (obstacles/items).
           * 🟨 **Unknown:** Curved corners or irregular shapes.
 
@@ -46,8 +50,15 @@ Provides temporal persistence to objects and generates navigation goals. It filt
 
   * **Features:**
       * **State Machine:** `Candidate` (Yellow) $\to$ `Stable` (Green) if tracked for `stability_time`.
-      * **Goal Generation:** Creates 4 "Visiting Points" (North/South/East/West) around the object.
+
+      * **Goal Generation (Adaptive Density):** Creates visiting points (Cyan Arrows) around the stable object. The quantity adapts to the object's size to ensure thorough coverage:
+
+          * **Small/Normal Objects:** Generates **6** points.
+          * **Large Objects:** Generates **8** points.
+          * The transition size is based on the `scan_step_threshold` parameter comparing against the object's diagonal size.
+
       * **Orientation Logic:** Calculates Yaw so the robot always **faces the object center** at the destination.
+
       * **Service Integration:** Can "Freeze" the map state (stop updating object positions) to prevent goal jitter during navigation.
 
 | Topic / Service | Type | Description |
@@ -63,12 +74,14 @@ Provides temporal persistence to objects and generates navigation goals. It filt
 Acts as the dispatch interface between the Tracker and the System Manager. It decides *which* point to visit next.
 
   * **Strategy (Greedy + Sticky):**
-    1.  **Sticky Focus:** If currently visiting "Object A", it prioritizes other points belonging to "Object A" before switching to "Object B".
-    2.  **Proximity:** If no current focus, it picks the physically closest target.
+    1.  **Sticky Focus:** If currently visiting points belonging to "Object A", it prioritizes remaining points for "Object A" before switching focus to "Object B".
+    2.  **Proximity:** If the current object's points are exhausted or no current focus exists, it picks the physically closest target from the overall queue.
     3.  **Progress Tracking:** Marks points as "Visited" when the robot gets within `reach_threshold`.
 
 | Topic | Description |
 | :--- | :--- |
+| **Sub** `/object_visiting_points` | Goals generated by the Tracker. |
+| **Sub** `/odom` | Robot's current position for distance calculations. |
 | **Pub** `/manager/target_pose` | The active target sent to the System Manager. |
 | **Pub** `/goal_status` | Visual feedback: Red (Active), Green (Done), Grey (Queue). |
 
@@ -86,11 +99,11 @@ The central orchestrator connecting the Mission Manager, Nav2, and the Scanner. 
 
 #### ★ Feature Spotlight: Smart Tracking Strategy
 
-To handle sensor noise while moving, this node intelligently switches the Tracker's mode:
+To handle sensor noise and navigation occlusions, this node intelligently switches the Tracker's mode using the `set_tracking_mode` service:
 
-1.  **Searching (Unfreeze):** When a **NEW** Object ID is received, Lidar tracking is enabled to pinpoint the object's exact location.
-2.  **Orbiting (Freeze):** When moving to a new viewpoint of the **SAME** object, tracking is **Frozen**. This prevents the center point from shifting due to occlusion as the robot moves around it.
-3.  **Scanning (Freeze):** Upon arrival, tracking is forced Frozen to ensure coordinate stability during data capture.
+1.  **Searching (Unfreeze):** When a **NEW** Object ID is received, Lidar tracking is enabled (`True`) to pinpoint the object's exact location before navigation begins.
+2.  **Orbiting (Freeze):** When moving to a new viewpoint of the **SAME** object, tracking is **Frozen** (`False`). This prevents the center point from shifting due to changing perspective or occlusion as the robot orbits.
+3.  **Scanning (Freeze):** Upon arrival, tracking is forced Frozen (`False`) to ensure coordinate stability and prevent goal jitter during data capture.
 
 | Action / Service | Role |
 | :--- | :--- |
@@ -108,7 +121,7 @@ The "Photographer." Acts as an Action Server that saves a synchronized snapshot 
     1.  **Buffer Flush:** Clears old images to ensure no motion blur from the navigation phase.
     2.  **Stabilization:** Waits for `wait_time` (e.g., 5.0s) to let robot vibrations settle.
     3.  **Capture:** Saves RGB, Depth, and TF Pose.
-    4.  **Depth Conversion:** Converts raw float meters $\to$ 16-bit PNG (Millimeters) and patches `NaN` values.
+    4.  **Depth Conversion:** Converts raw float meters $\to$ 16-bit PNG (Millimeters) and patches $\text{NaN}$ values.
     5.  **Cool Down:** Waits again before returning success to prevent immediate robot jerking.
 
 **Output Directory Structure:**
