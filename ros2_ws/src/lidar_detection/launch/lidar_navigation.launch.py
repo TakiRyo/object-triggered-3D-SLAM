@@ -42,6 +42,7 @@ def generate_launch_description():
             'lock_margin': 2.0,
             'smoothing_factor': 1.0,
             'visiting_point_buffer': 0.1,
+            'scan_step_threshold': 1.0,
         }]
     )
 

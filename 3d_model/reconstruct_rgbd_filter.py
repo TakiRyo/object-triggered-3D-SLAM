@@ -1,6 +1,5 @@
 # ## 3d_model_filtered.py
-# ## construct 3d models for ALL objects found in the directory (with Z-axis filtering)
-# i use it Nov27. 
+# ## construct 3d models for ALL objects (Supports 4, 6, or any number of frames)
 
 import open3d as o3d
 import numpy as np
@@ -18,11 +17,10 @@ save_dir  = os.path.join(base_dir, "3d_reconst")
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 
-# --- NEW Z-AXIS FILTERING PARAMETER ---
-# Points with a Z-coordinate less than this threshold will be removed from the final model.
-# This removes the floor/base plate from the reconstructed object.
+# --- Z-AXIS FILTERING ---
+# Removes floor points (Z < 0.03m)
 Z_FILTER_THRESHOLD = 0.03
-# -------------------------------------
+# ------------------------
 
 # --- CAMERA INTRINSICS ---
 fx, fy = 565.6009, 565.6009
@@ -47,9 +45,13 @@ def get_unique_object_names():
 
     for f in all_files:
         filename = os.path.basename(f)
+        # Assuming format: Label_ID_Frame.jpg
+        # Example: Object_0_1.jpg
         parts = filename.split('_')
         
         if len(parts) >= 2:
+            # Join everything except the last part (the frame number)
+            # ["Object", "0", "1.jpg"] -> "Object_0"
             obj_name = "_".join(parts[:-1])
             unique_names.add(obj_name)
     
@@ -61,6 +63,8 @@ def reconstruct_object(obj_name):
     print(f"========================================")
 
     # 1. LOAD FILES SPECIFIC TO THIS OBJECT
+    # "glob" will find ALL files that start with {obj_name}_
+    # So if you have Object_0_1...Object_0_6, it finds all 6.
     color_files = sorted(glob.glob(os.path.join(color_dir, f"{obj_name}_*.jpg")))
     depth_files = sorted(glob.glob(os.path.join(depth_dir, f"{obj_name}_*.png")))
     pose_files  = sorted(glob.glob(os.path.join(pose_dir, f"{obj_name}_*.txt")))
@@ -70,7 +74,8 @@ def reconstruct_object(obj_name):
         print(f"❌ Error: No files found for {obj_name}")
         return
 
-    print(f"   Found {n_frames} frames.")
+    # PRINT CONFIRMATION
+    print(f"📸 Found {n_frames} images for reconstruction.")
 
     # 2. INITIALIZE VOLUME
     volume = o3d.pipelines.integration.ScalableTSDFVolume(
@@ -81,56 +86,59 @@ def reconstruct_object(obj_name):
 
     # 3. INTEGRATION LOOP
     for i in range(n_frames):
-        # Load Data
-        color = o3d.io.read_image(color_files[i])
-        depth = o3d.io.read_image(depth_files[i])
-        pose_ros = np.loadtxt(pose_files[i])
+        try:
+            # Load Data
+            color = o3d.io.read_image(color_files[i])
+            depth = o3d.io.read_image(depth_files[i])
+            pose_ros = np.loadtxt(pose_files[i])
 
-        pose_optical = pose_ros @ T_fix
-        extrinsic = np.linalg.inv(pose_optical)
+            pose_optical = pose_ros @ T_fix
+            extrinsic = np.linalg.inv(pose_optical)
 
-        rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-            color, depth, 
-            depth_scale=1000.0,
-            depth_trunc=3.0,
-            convert_rgb_to_intensity=False
-        )
+            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+                color, depth, 
+                depth_scale=1000.0,
+                depth_trunc=3.0,
+                convert_rgb_to_intensity=False
+            )
 
-        volume.integrate(rgbd, intrinsics, extrinsic)
-        sys.stdout.write(f"\r   Integrate: {i+1}/{n_frames}")
-        sys.stdout.flush()
+            volume.integrate(rgbd, intrinsics, extrinsic)
+            sys.stdout.write(f"\r   Integrate: {i+1}/{n_frames}")
+            sys.stdout.flush()
+        except Exception as e:
+            print(f"\n   ⚠️ Skipping frame {i+1} due to error: {e}")
 
     print("\n   Extracting mesh...")
     mesh = volume.extract_triangle_mesh()
     mesh.compute_vertex_normals()
 
-    # --- 4. NEW FILTERING STEP ---
+    if len(mesh.vertices) == 0:
+        print("❌ Warning: Mesh is empty! Check poses or depth scale.")
+        return
+
+    # --- 4. Z-FILTERING STEP ---
     print(f"   Filtering points below Z < {Z_FILTER_THRESHOLD:.2f}m...")
     
-    # A. Convert the mesh back to a point cloud (easier to filter with NumPy)
+    # Convert mesh to point cloud
     pcd = mesh.sample_points_uniformly(number_of_points=100000)
     
-    # B. Extract point coordinates
+    # Apply Mask
     points = np.asarray(pcd.points)
     colors = np.asarray(pcd.colors)
-    
-    # C. Apply filtering mask (keep points where Z > threshold)
     mask = points[:, 2] >= Z_FILTER_THRESHOLD
     
-    # D. Create the filtered point cloud
     filtered_pcd = o3d.geometry.PointCloud()
     filtered_pcd.points = o3d.utility.Vector3dVector(points[mask])
     filtered_pcd.colors = o3d.utility.Vector3dVector(colors[mask])
     
-    print(f"   Points remaining: {len(filtered_pcd.points)} (Original sampled points: {len(points)})")
+    print(f"   Points remaining: {len(filtered_pcd.points)}")
 
-    # 5. SAVE OUTPUT (Saving the filtered Point Cloud)
+    # 5. SAVE OUTPUT
     output_filename = f"{obj_name}.ply"
     output_path = os.path.join(save_dir, output_filename)
     
-    # Saving as point cloud after filtering
     o3d.io.write_point_cloud(output_path, filtered_pcd)
-    print(f"✅ Saved Filtered Point Cloud to: {output_path}")
+    print(f"✅ Saved 3D Model: {output_path}")
 
 def main():
     # 1. Find all objects
@@ -140,7 +148,7 @@ def main():
         print("No objects found in directory!")
         return
 
-    print(f"Found {len(objects)} objects: {objects}")
+    print(f"Found {len(objects)} unique objects: {objects}")
 
     # 2. Loop through each object and reconstruct
     for obj in objects:

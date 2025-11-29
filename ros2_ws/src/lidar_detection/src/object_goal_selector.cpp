@@ -1,52 +1,10 @@
-/**
- * -----------------------------------------------------------------------
+/*
  * Node Name: ObjectClusterMarker
- * -----------------------------------------------------------------------
- * Purpose:
- * 1. Tracks distinct objects over time (Temporal Persistence).
- * 2. Filters noise by requiring objects to be stable for `stability_time`.
- * 3. Generates "Visiting Points" (Goals) around the object.
- * 4. Freezes the map state via service for navigation tasks.
- *
- * Input:
- * /object_clusters (sensor_msgs::msg::PointCloud2)
- * - A single cloud containing points classified as "Objects" by the previous node.
- *
- * Output:
- * /candidate_clusters   (MarkerArray) -> YELLOW Boxes (Unstable/New detections)
- * /stable_clusters      (MarkerArray) -> GREEN Boxes  (Confirmed objects)
- * /debug_lock_zones     (MarkerArray) -> RED Cylinders (The "Keep-Out" or "Lock" zone)
- * /object_visiting_points (MarkerArray) -> CYAN Arrows (Navigation Goals)
- *
- * Logic Flow:
- * 1. Re-Clustering:
- * Incoming points are grouped into individual clusters using Euclidean distance.
- * 2. Data Association:
- * - New clusters are matched to existing 'Stable' objects first.
- * - If no match, they are matched to 'Candidate' objects.
- * - If still no match, a new 'Candidate' is created.
- * 3. State Machine:
- * - Candidate -> Stable: If tracked consistently for > `stability_time`.
- * - Candidate -> Deleted: If not seen for > 0.5 seconds.
- * 4. Goal Generation (The "Visiting Points"):
- * - Creates 4 points (North, South, East, West) around the object's lock zone.
- * - **Orientation Calculation**:
- * The orientation (Yaw) is calculated so the arrow points **FROM** the visiting point
- * **TO** the center of the object.
- * Formula: yaw = atan2(object_cy - point_y, object_cx - point_x)
- *
- * Services:
- * /set_tracking_mode (std_srvs::SetBool)
- * - True: Updates positions based on LiDAR (Live Tracking).
- * - False: Freezes markers in place (allows robot to navigate to them without
- * the goal jumping around due to sensor noise).
- *
- * Adjustable Parameters:
- * stability_time        : Seconds a cluster must exist to become "Stable".
- * lock_margin           : Extra padding added to object radius for the lock zone.
- * visiting_point_buffer : Distance from the lock zone to the goal points.
- * smoothing_factor      : 0.0 to 1.0. Higher = faster updates, Lower = smoother motion.
- * -----------------------------------------------------------------------
+ * Updates:
+ * - DYNAMIC VISITING POINTS:
+ * - Small objects (< 1.0m) -> 4 Points
+ * - Large objects (> 1.0m) -> 6 Points
+ * - Uses trigonometry to place points in a perfect circle.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -59,6 +17,7 @@
 #include <algorithm>
 #include <string>
 
+// --- Tracking Structure ---
 struct TrackedCluster
 {
   float min_x, max_x;
@@ -78,12 +37,15 @@ public:
   : Node("object_goal_selector")
   {
     this->declare_parameter("cluster_distance_threshold", 0.4);
-    this->declare_parameter("min_cluster_points", 8);          
-    this->declare_parameter("wall_thickness_threshold", 0.3);   
+    this->declare_parameter("min_cluster_points", 10);          
+    this->declare_parameter("wall_thickness_threshold", 0.2);   
     this->declare_parameter("stability_time", 3.0);             
-    this->declare_parameter("lock_margin", 2.0);                
+    this->declare_parameter("lock_margin", 0.5);                
     this->declare_parameter("smoothing_factor", 1.0); 
-    this->declare_parameter("visiting_point_buffer", 0.1); 
+    this->declare_parameter("visiting_point_buffer", 0.2); 
+    
+    // NEW: Threshold to switch from 4 to 6 points
+    this->declare_parameter("scan_step_threshold", 1.0); 
 
     cluster_distance_threshold_ = this->get_parameter("cluster_distance_threshold").as_double();
     min_cluster_points_         = this->get_parameter("min_cluster_points").as_int();
@@ -92,8 +54,8 @@ public:
     lock_margin_                = this->get_parameter("lock_margin").as_double();
     smoothing_factor_           = this->get_parameter("smoothing_factor").as_double();
     visiting_point_buffer_      = this->get_parameter("visiting_point_buffer").as_double();
+    scan_step_threshold_        = this->get_parameter("scan_step_threshold").as_double();
 
-    // Input and Output
     object_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       "/object_clusters", 10,
       std::bind(&ObjectClusterMarker::cloudCallback, this, std::placeholders::_1));
@@ -101,13 +63,15 @@ public:
     candidate_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/candidate_clusters", 10);
     stable_pub_    = this->create_publisher<visualization_msgs::msg::MarkerArray>("/stable_clusters", 10);
     debug_pub_     = this->create_publisher<visualization_msgs::msg::MarkerArray>("/debug_lock_zones", 10);
+    
+    // Publishes Markers with correct Position AND Orientation
     goal_pub_      = this->create_publisher<visualization_msgs::msg::MarkerArray>("/object_visiting_points", 10);
 
     mode_service_ = this->create_service<std_srvs::srv::SetBool>(
         "set_tracking_mode",
         std::bind(&ObjectClusterMarker::handleModeSwitch, this, std::placeholders::_1, std::placeholders::_2));
 
-    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready.");
+    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready. Adaptive Scanning Active.");
   }
 
 private:
@@ -257,41 +221,45 @@ private:
           zone.color.r = 1.0; zone.color.a = 0.1;
           debug_array.markers.push_back(zone);
 
-          // 3. ★ VISITING POINTS with ORIENTATION ★
+          // 3. ★ ADAPTIVE VISITING POINTS ★
           float vp_radius = c.lock_radius + visiting_point_buffer_;
-          std::vector<std::pair<float, float>> vps = {
-              {c.cx, c.cy + vp_radius}, {c.cx, c.cy - vp_radius},
-              {c.cx + vp_radius, c.cy}, {c.cx - vp_radius, c.cy}
-          };
+          
+          // Logic: If object diagonal > threshold, take 6 photos. Else 4.
+          float diagonal = std::sqrt(c.width*c.width + c.height*c.height);
+          int num_points = (diagonal > scan_step_threshold_) ? 6 : 4;
 
-          for (size_t i=0; i<4; i++) {
+          for (int i=0; i<num_points; i++) {
               visualization_msgs::msg::Marker p;
               p.header.frame_id = frame_id; p.header.stamp = now;
               p.ns = "visiting_points"; 
+              
               // ID Encoding: Object ID * 10 + Point Index
+              // Note: If you use more than 10 points, change this to *100
               int obj_id_index = &c - &stable_objects_[0]; 
               p.id = (obj_id_index * 10) + i; 
 
-              p.type = visualization_msgs::msg::Marker::ARROW; // Changed to ARROW to see orientation
+              p.type = visualization_msgs::msg::Marker::ARROW; 
               p.action = visualization_msgs::msg::Marker::ADD;
-              p.pose.position.x = vps[i].first; 
-              p.pose.position.y = vps[i].second; 
+              
+              // Calculate Point on Circle using Trig
+              // angle = 0, 90, 180... (for 4) OR 0, 60, 120... (for 6)
+              float angle = (2.0 * M_PI / num_points) * i;
+              
+              p.pose.position.x = c.cx + vp_radius * std::cos(angle);
+              p.pose.position.y = c.cy + vp_radius * std::sin(angle);
               p.pose.position.z = 0.2;
 
-              // --- CALCULATE ORIENTATION (Face Center) ---
-              // Vector from Point to Center
-              float dx = c.cx - vps[i].first;
-              float dy = c.cy - vps[i].second;
-              float yaw = std::atan2(dy, dx);
+              // Orientation (Face Center)
+              // Vector from Point to Center (Opposite of radius vector)
+              // Angle to center = angle + PI (since point is at 'angle')
+              float yaw = angle + M_PI; 
 
-              // Manual Quaternion Conversion (Yaw -> Quat)
-              p.pose.orientation.w = cos(yaw * 0.5);
-              p.pose.orientation.z = sin(yaw * 0.5);
+              p.pose.orientation.w = std::cos(yaw * 0.5);
+              p.pose.orientation.z = std::sin(yaw * 0.5);
               p.pose.orientation.x = 0.0;
               p.pose.orientation.y = 0.0;
-              // -------------------------------------------
 
-              p.scale.x = 0.3; p.scale.y = 0.05; p.scale.z = 0.05; // Arrow size
+              p.scale.x = 0.3; p.scale.y = 0.05; p.scale.z = 0.05; 
               p.color.r = 0.0; p.color.g = 1.0; p.color.b = 1.0; p.color.a = 0.9;
               goals_array.markers.push_back(p);
           }
@@ -319,6 +287,7 @@ private:
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr mode_service_;
 
   double cluster_distance_threshold_, wall_thickness_threshold_, stability_time_, lock_margin_, smoothing_factor_, visiting_point_buffer_;
+  double scan_step_threshold_; // New Param
   int min_cluster_points_;
 };
 
