@@ -41,6 +41,8 @@ ament_target_dependencies(scanner_node
   tf2_geometry_msgs
 )
 
+target_link_libraries(scanner_node ${OpenCV_LIBS})
+
 # 4. INSTALL
 install(TARGETS 
   manager_node
@@ -51,5 +53,10 @@ install(TARGETS
 install(DIRECTORY 
   include/ 
   DESTINATION include/)
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
 ament_package()
