@@ -1,7 +1,3 @@
-I understand. You're looking for the complete text of the updated README without the file generation syntax. Here is the full, revised system documentation, which now explicitly highlights the adaptive goal generation logic:
-
------
-
 # OTSLAM: Active Object Scanning System
 
 ## 📖 System Overview
@@ -28,7 +24,7 @@ This project implements an autonomous **"Move & Scan"** pipeline for structured 
 Segments 2D LiDAR scans into distinct clusters and classifies them based on geometric properties (PCA linearity, size, density).
 
   * **Logic:**
-    1.  **Clustering:** Groups points based on Euclidean distance ($\text{gap\_threshold}$).
+    1.  **Clustering:** Groups points based on Euclidean distance. 
     2.  **PCA Analysis:** Calculates eigenvalues ($\lambda_0, \lambda_1$) to determine if a cluster is linear or blob-like.
     3.  **Classification:**
           * 🟩 **Wall:** Long, straight, dense, high linearity.
