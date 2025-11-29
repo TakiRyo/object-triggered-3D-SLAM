@@ -93,6 +93,7 @@ public:
     smoothing_factor_           = this->get_parameter("smoothing_factor").as_double();
     visiting_point_buffer_      = this->get_parameter("visiting_point_buffer").as_double();
 
+    // Input and Output
     object_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       "/object_clusters", 10,
       std::bind(&ObjectClusterMarker::cloudCallback, this, std::placeholders::_1));
@@ -100,8 +101,6 @@ public:
     candidate_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/candidate_clusters", 10);
     stable_pub_    = this->create_publisher<visualization_msgs::msg::MarkerArray>("/stable_clusters", 10);
     debug_pub_     = this->create_publisher<visualization_msgs::msg::MarkerArray>("/debug_lock_zones", 10);
-    
-    // Publishes Markers with correct Position AND Orientation
     goal_pub_      = this->create_publisher<visualization_msgs::msg::MarkerArray>("/object_visiting_points", 10);
 
     mode_service_ = this->create_service<std_srvs::srv::SetBool>(
