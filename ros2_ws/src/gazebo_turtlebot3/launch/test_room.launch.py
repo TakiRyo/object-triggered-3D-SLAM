@@ -20,7 +20,7 @@ def generate_launch_description():
     y_pose = LaunchConfiguration('y_pose', default='0.0')
 
     #CHANGE WORLD PATH HERE
-    world = os.path.join(pkg_my_gazebo, 'worlds', 'cardboard_table_chairs_cones_room.world')
+    world = os.path.join(pkg_my_gazebo, 'worlds', 'test_room_thicker_wall.world')
 
     # Start Gazebo server
     gzserver_cmd = IncludeLaunchDescription(
