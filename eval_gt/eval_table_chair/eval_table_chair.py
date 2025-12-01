@@ -19,37 +19,38 @@ UNIT_SCALE = 1.0  # Use 0.001 if meshes are in mm
 
 # --- TABLE SCALE ---
 # <scale>...</scale> in Gazebo world
-TABLE_SCALE = [1.0, 1.0, 1.0] 
+TABLE_SCALE = [0.1, 0.1, 0.1] 
 
 # --- CHAIR SCALE ---
 # <scale>...</scale> in Gazebo world
-CHAIR_SCALE = [1.0, 1.0, 1.0]
+CHAIR_SCALE = [0.0075, 0.0075, 0.0075]
 
 # 3. MANUAL ALIGNMENT (5 Objects)
 # Adjust these to snap the GT onto the Yellow SLAM cloud.
 
 # Common Z (Height adjustment for all objects)
-COMMON_Z = 0.0
-
+COMMON_Z = -0.6
 # [A] TABLE (Center)
 TABLE_ROT   = [0.0, 0.0, 0.0]  
-TABLE_TRANS = [0.0, 0.0, COMMON_Z]
+TABLE_TRANS = [0.0, 0.0,-0.5]
 
-# [B] CHAIR 1 (e.g., Top side)
+# red arrow (x) is right, green arrow (y) is up. blue arrow (z) is toward to me 
+
+# [B] CHAIR 1 (top right)
 CHAIR_1_ROT   = [0.0, 0.0, 0.0]
-CHAIR_1_TRANS = [0.0, 0.5, COMMON_Z]
+CHAIR_1_TRANS = [0.6, 1.45, COMMON_Z]
 
-# [C] CHAIR 2 (e.g., Bottom side)
-CHAIR_2_ROT   = [0.0, 0.0, 180.0] # Facing opposite
-CHAIR_2_TRANS = [0.0, -0.5, COMMON_Z]
+# [C] CHAIR 2 (top left)
+CHAIR_2_ROT   = [0.0, 0.0, 0.0] # Facing opposite
+CHAIR_2_TRANS = [-0.45, 1.45, COMMON_Z]
 
-# [D] CHAIR 3 (e.g., Left side)
-CHAIR_3_ROT   = [0.0, 0.0, 90.0]
-CHAIR_3_TRANS = [-0.5, 0.0, COMMON_Z]
+# [D] CHAIR 3 (bottom left)
+CHAIR_3_ROT   = [0.0, 0.0, 180.0]
+CHAIR_3_TRANS = [-0.6, -1.25, COMMON_Z]
 
-# [E] CHAIR 4 (e.g., Right side)
-CHAIR_4_ROT   = [0.0, 0.0, -90.0]
-CHAIR_4_TRANS = [0.5, 0.0, COMMON_Z]
+# [E] CHAIR 4 (bottom right)
+CHAIR_4_ROT   = [0.0, 0.0, 180.0]
+CHAIR_4_TRANS = [0.6, -1.25, COMMON_Z]
 
 # ==========================================
 
