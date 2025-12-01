@@ -6,7 +6,7 @@ import copy
 import os
 
 # ==========================================
-# 🛠️ CONFIGURATION
+# 🛠️ CONFIGURATION (設定)
 # ==========================================
 
 # 1. FILE PATHS
@@ -26,7 +26,7 @@ SCALE_X = 1.62
 SCALE_Y = 1.1
 SCALE_Z = 0.50377
 
-# 3. MANUAL ALIGNMENT 
+# 3. MANUAL ALIGNMENT (手動位置合わせ)
 # Adjust these to snap the Yellow box onto the Blue box
 # -----------------------------------------------------
 # Rotation (Degrees)
