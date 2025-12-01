@@ -3,85 +3,98 @@ import numpy as np
 import copy
 
 # --- CONFIG ---
-SLAM_FILE = "Object_0.ply"       # Your SLAM result (あなたのSLAM結果)
-GT_FILE = "gt_cardboard_box.ply"      # Your scaled GT (in meters) (スケールされたGT)
-VOXEL_SIZE = 0.05                       # For rough alignment (5cm)
+SLAM_FILE = "Object_0.ply"              
+GT_FILE = "gt_cardboard_box.ply"      
 
-def draw_registration_result(source, target, transformation):
+# ==========================================
+# 🎛️ MANUAL ADJUSTMENT (完全手動設定)
+# ==========================================
+# 1. 自動微調整(ICP)を使うか？
+#    True  = 手動値を初期値として、最後はコンピュータに任せる
+#    False = コンピュータを信用せず、手動値そのままで評価する（★今回はFalse推奨）
+USE_ICP = False 
+
+# 2. 回転 (Rotation) - 前回の成功値を入力
+ROT_X = 0.0   
+ROT_Y = 0.0   
+ROT_Z = 0.0   
+
+# 3. 位置ズレ (Translation) - 中心からの微調整 (Unit: Meters)
+#    黄色(SLAM)をどっちに動かしたいか？
+#    X = 赤矢印方向, Y = 緑矢印方向, Z = 青矢印方向
+TRANS_X = 0.0  
+TRANS_Y = 0.0   
+TRANS_Z = -0.1   
+# ==========================================
+
+def get_manual_rotation_matrix(rx, ry, rz):
+    rx, ry, rz = np.radians(rx), np.radians(ry), np.radians(rz)
+    R = o3d.geometry.get_rotation_matrix_from_xyz((rx, ry, rz))
+    return R
+
+def draw_registration_result(source, target, window_name="Result"):
     source_temp = copy.deepcopy(source)
     target_temp = copy.deepcopy(target)
-    source_temp.paint_uniform_color([1, 0.706, 0])    # SLAM = Yellow (SLAM = 黄色)
-    target_temp.paint_uniform_color([0, 0.651, 0.929]) # GT = Blue (GT = 青色)
-    source_temp.transform(transformation)
-    o3d.visualization.draw_geometries([source_temp, target_temp],
-                                      window_name="Alignment Check")
+    source_temp.paint_uniform_color([1, 0.706, 0])     # SLAM = Yellow
+    target_temp.paint_uniform_color([0, 0.651, 0.929]) # GT = Blue
+    
+    # 座標軸を表示 (Red=X, Green=Y, Blue=Z)
+    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0,0,0])
+    
+    o3d.visualization.draw_geometries([source_temp, target_temp, axes],
+                                      window_name=window_name)
 
-def align_clouds(slam, gt):
+def align_and_evaluate():
+    print(f"Loading {SLAM_FILE} and {GT_FILE}...")
+    slam = o3d.io.read_point_cloud(SLAM_FILE)
+    gt = o3d.io.read_point_cloud(GT_FILE)
+
+    # 1. Centering (両方を中心に持ってくる)
     print("1. Centering Clouds...")
-    # Move both to (0,0,0) to fix the "completely different position" issue
-    # 「完全に異なる位置」の問題を修正するため、両方を (0,0,0) に移動
-    slam_center = slam.get_center()
-    gt_center = gt.get_center()
-    slam.translate(-slam_center)
-    gt.translate(-gt_center)
+    slam.translate(-slam.get_center())
+    gt.translate(-gt.get_center())
 
-    print("2. Rough Alignment (Global)...")
-    # This assumes they are roughly upright. If rotation is huge, we might need RANSAC.
-    # （大まかに垂直であることを想定。回転が大きい場合はRANSACが必要になることも）
-    threshold = 0.2 # 20cm distance threshold (20cmの距離しきい値)
-    trans_init = np.identity(4)
+    # 2. Apply MANUAL Transform (手動補正)
+    print(f"2. Applying Manual Transform...")
+    print(f"   Rot(deg): {ROT_X}, {ROT_Y}, {ROT_Z}")
+    print(f"   Trans(m): {TRANS_X}, {TRANS_Y}, {TRANS_Z}")
     
-    # Apply Point-to-Plane ICP (Best for walls/boxes)
-    # Point-to-Plane ICPを適用（壁や箱に最適）
-    # We need normals for Point-to-Plane (Point-to-Planeには法線が必要)
-    slam.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-    gt.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    # 回転
+    R = get_manual_rotation_matrix(ROT_X, ROT_Y, ROT_Z)
+    slam.rotate(R, center=(0,0,0))
+    # 移動
+    slam.translate([TRANS_X, TRANS_Y, TRANS_Z])
 
-    reg_p2l = o3d.pipelines.registration.registration_icp(
-        slam, gt, threshold, trans_init,
-        o3d.pipelines.registration.TransformationEstimationPointToPlane())
-    
-    print(f"   Fitness: {reg_p2l.fitness:.4f} (Overlapping area)")
-    print(f"   RMSE: {reg_p2l.inlier_rmse:.4f}")
-    
-    return reg_p2l.transformation
+    # --- VISUAL CHECK ---
+    print("\n👀 Check Alignment... (Close window to see score)")
+    draw_registration_result(slam, gt, window_name="Manual Alignment Check")
 
-def evaluate_metrics(slam, gt):
+    # 3. ICP (Optional)
+    if USE_ICP:
+        print("3. Running ICP (Fine-tuning)...")
+        threshold = 0.1 
+        slam.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        gt.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+
+        reg_p2l = o3d.pipelines.registration.registration_icp(
+            slam, gt, threshold, np.identity(4),
+            o3d.pipelines.registration.TransformationEstimationPointToPlane())
+        
+        print(f"   ICP Fitness: {reg_p2l.fitness:.4f}")
+        slam.transform(reg_p2l.transformation)
+        draw_registration_result(slam, gt, window_name="After ICP Result")
+    else:
+        print("3. Skipping ICP (Using Manual Alignment Only)")
+
+    # 4. Evaluation
     print("\n--- 📊 EVALUATION RESULTS ---")
-    
-    # 1. Accuracy (SLAM -> GT)
-    # "How close are my points to the real wall?"
-    # 「私の点群は実際の壁にどれだけ近いか？」
-    dists_s2g = slam.compute_point_cloud_distance(gt)
-    dists_s2g = np.asarray(dists_s2g)
-    accuracy = np.mean(dists_s2g)
+    dists = slam.compute_point_cloud_distance(gt)
+    accuracy = np.mean(dists)
     print(f"✅ Accuracy (Mean Error): {accuracy*100:.2f} cm")
-    
-    # 2. Completeness (GT -> SLAM)
-    # "How much of the box did I miss?"
-    # 「箱のどれだけを見逃したか？」
+
     dists_g2s = gt.compute_point_cloud_distance(slam)
-    dists_g2s = np.asarray(dists_g2s)
     completeness = np.mean(dists_g2s)
     print(f"⚠️ Completeness (Mean Error): {completeness*100:.2f} cm")
-    print("   (Note: High completeness error is expected due to missing top/bottom)")
-    print("   （注：上部/底部が欠落しているため、完全性誤差が高いのは想定内です）")
 
 if __name__ == "__main__":
-    # Load (ロード)
-    print(f"Loading {SLAM_FILE} and {GT_FILE}...")
-    slam_pcd = o3d.io.read_point_cloud(SLAM_FILE)
-    gt_pcd = o3d.io.read_point_cloud(GT_FILE)
-
-    # Align (位置合わせ)
-    transformation = align_clouds(slam_pcd, gt_pcd)
-    
-    # Visual Check (Yellow = SLAM, Blue = GT) (視覚的な確認)
-    print("Opening Visualization... (Close window to continue)")
-    draw_registration_result(slam_pcd, gt_pcd, transformation)
-    
-    # Apply transformation permanently for evaluation (評価のために変換を永続的に適用)
-    slam_pcd.transform(transformation)
-    
-    # Evaluate (評価)
-    evaluate_metrics(slam_pcd, gt_pcd)
+    align_and_evaluate()
