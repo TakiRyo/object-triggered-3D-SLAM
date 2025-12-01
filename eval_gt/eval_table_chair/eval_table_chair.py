@@ -1,3 +1,21 @@
+# (3d_model) ros2_env@2024-NEDO-DENKI-1:~/taki/otslam/eval_gt/eval_table_chair$ python3 eval_table_chair.py
+# 📂 Loading SLAM: /home/ros2_env/taki/otslam/eval_gt/eval_table_chair/table_chair_slam.ply
+# 📍 Centered SLAM data to (0,0,0).
+# 🔨 Loading GT: table_lightmap.dae
+# 🔨 Loading GT: Chair.obj
+# 🔄 Placing 1 Table and 4 Chairs...
+
+# 👀 Opening Visualization... (Adjust TRANS/ROT in config)
+
+# --- 📊 EVALUATION RESULTS ---
+# ✅ Accuracy (Mean Error): 2.62 cm
+# ⚠️ Completeness (Mean Error): 8.58 cm
+
+# 💾 Saving result...
+# ✅ Saved to table_chair_eval_result.ply
+# (3d_model) ros2_env@2024-NEDO-DENKI-1:~/taki/otslam/eval_gt/eval_table_chair
+
+
 import open3d as o3d
 import trimesh
 import numpy as np
@@ -31,8 +49,8 @@ CHAIR_SCALE = [0.0075, 0.0075, 0.0075]
 # Common Z (Height adjustment for all objects)
 COMMON_Z = -0.6
 # [A] TABLE (Center)
-TABLE_ROT   = [0.0, 0.0, 0.0]  
-TABLE_TRANS = [0.00, 0.17, 0.0]
+TABLE_ROT   = [0.0, 0.0, -1.0]  
+TABLE_TRANS = [0.035, 0.17, 0.0]
 
 # red arrow (x) is right, green arrow (y) is up. blue arrow (z) is toward to me 
 
