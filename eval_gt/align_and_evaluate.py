@@ -1,31 +1,83 @@
+#3d_model
 import open3d as o3d
+import trimesh
 import numpy as np
 import copy
+import os
 
-# --- CONFIG ---
+# ==========================================
+# 🛠️ CONFIGURATION (設定)
+# ==========================================
+
+# 1. FILE PATHS
+# Path to your SLAM result (ply)
 SLAM_FILE = "Object_0.ply"              
-GT_FILE = "gt_cardboard_box.ply"      
+# Path to the raw Gazebo mesh (dae)
+DAE_FILE = "/home/ros2_env/taki/otslam/eval_gt/cardboard_box/meshes/cardboard_box.dae"
 
-# ==========================================
-# 🎛️ MANUAL ADJUSTMENT (完全手動設定)
-# ==========================================
-# 1. 自動微調整(ICP)を使うか？
-#    True  = 手動値を初期値として、最後はコンピュータに任せる
-#    False = コンピュータを信用せず、手動値そのままで評価する（★今回はFalse推奨）
-USE_ICP = False 
+# 2. GAZEBO SCALING (From your .world file)
+# Fixes the "too big" or "wrong shape" issue
+# <scale>1.25932 1.00745 0.755591</scale>
+UNIT_SCALE = 0.001  # mm -> meters
+# SCALE_X = 1.25932
+# SCALE_Y = 1.00745
+# SCALE_Z = 0.755591
+SCALE_X = 1.62
+SCALE_Y = 1.1
+SCALE_Z = 0.50377
 
-# 2. 回転 (Rotation) - 前回の成功値を入力
+# 3. MANUAL ALIGNMENT (手動位置合わせ)
+# Adjust these to snap the Yellow box onto the Blue box
+# -----------------------------------------------------
+# Rotation (Degrees)
 ROT_X = 0.0   
 ROT_Y = 0.0   
 ROT_Z = 0.0   
 
-# 3. 位置ズレ (Translation) - 中心からの微調整 (Unit: Meters)
-#    黄色(SLAM)をどっちに動かしたいか？
-#    X = 赤矢印方向, Y = 緑矢印方向, Z = 青矢印方向
-TRANS_X = 0.0  
+# Translation (Meters) - Shift relative to center
+# If Yellow is too high, decrease Z (e.g., -0.05)
+TRANS_X = 0.05  
 TRANS_Y = 0.0   
-TRANS_Z = -0.1   
-# ==========================================
+TRANS_Z = 0.0  # Try adjusting this to match the floor!
+# -----------------------------------------------------
+
+def generate_scaled_gt():
+    """Loads DAE, converts to PCD, and applies Gazebo scaling."""
+    print(f"🔨 Generating GT from: {DAE_FILE}")
+    
+    # 1. Load Mesh
+    try:
+        mesh = trimesh.load(DAE_FILE, force='mesh')
+    except Exception as e:
+        print(f"Error loading DAE: {e}")
+        return None
+
+    if isinstance(mesh, trimesh.Scene):
+        mesh = trimesh.util.concatenate(mesh.dump())
+
+    # 2. Convert to Open3D
+    mesh.export("temp_gt.ply")
+    gt_mesh = o3d.io.read_triangle_mesh("temp_gt.ply")
+    if os.path.exists("temp_gt.ply"): os.remove("temp_gt.ply")
+    
+    # 3. Sample Points
+    gt_pcd = gt_mesh.sample_points_uniformly(number_of_points=100000)
+    
+    # 4. Apply Scaling (Non-Uniform Stretch)
+    points = np.asarray(gt_pcd.points)
+    
+    # Convert mm -> m
+    points = points * UNIT_SCALE
+    
+    # Apply Gazebo Stretch
+    points[:, 0] *= SCALE_X
+    points[:, 1] *= SCALE_Y
+    points[:, 2] *= SCALE_Z
+    
+    gt_pcd.points = o3d.utility.Vector3dVector(points)
+    
+    print(f"✅ GT Generated. Size: {gt_pcd.get_max_bound() - gt_pcd.get_min_bound()}")
+    return gt_pcd
 
 def get_manual_rotation_matrix(rx, ry, rz):
     rx, ry, rz = np.radians(rx), np.radians(ry), np.radians(rz)
@@ -38,63 +90,50 @@ def draw_registration_result(source, target, window_name="Result"):
     source_temp.paint_uniform_color([1, 0.706, 0])     # SLAM = Yellow
     target_temp.paint_uniform_color([0, 0.651, 0.929]) # GT = Blue
     
-    # 座標軸を表示 (Red=X, Green=Y, Blue=Z)
+    # Axes: Red=X, Green=Y, Blue=Z
     axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0,0,0])
     
     o3d.visualization.draw_geometries([source_temp, target_temp, axes],
                                       window_name=window_name)
 
-def align_and_evaluate():
-    print(f"Loading {SLAM_FILE} and {GT_FILE}...")
-    slam = o3d.io.read_point_cloud(SLAM_FILE)
-    gt = o3d.io.read_point_cloud(GT_FILE)
+def main():
+    # 1. Generate the Correct GT
+    gt_pcd = generate_scaled_gt()
+    if gt_pcd is None: return
 
-    # 1. Centering (両方を中心に持ってくる)
-    print("1. Centering Clouds...")
-    slam.translate(-slam.get_center())
-    gt.translate(-gt.get_center())
+    # 2. Load SLAM
+    print(f"📂 Loading SLAM: {SLAM_FILE}")
+    slam_pcd = o3d.io.read_point_cloud(SLAM_FILE)
 
-    # 2. Apply MANUAL Transform (手動補正)
-    print(f"2. Applying Manual Transform...")
-    print(f"   Rot(deg): {ROT_X}, {ROT_Y}, {ROT_Z}")
-    print(f"   Trans(m): {TRANS_X}, {TRANS_Y}, {TRANS_Z}")
-    
-    # 回転
+    # 3. Centering (Bring both to 0,0,0)
+    print("📍 Centering Clouds...")
+    slam_pcd.translate(-slam_pcd.get_center())
+    gt_pcd.translate(-gt_pcd.get_center())
+
+    # 4. Apply Manual Transform
+    print(f"🔄 Applying Manual Transform: Rot={ROT_X},{ROT_Y},{ROT_Z} | Trans={TRANS_X},{TRANS_Y},{TRANS_Z}")
     R = get_manual_rotation_matrix(ROT_X, ROT_Y, ROT_Z)
-    slam.rotate(R, center=(0,0,0))
-    # 移動
-    slam.translate([TRANS_X, TRANS_Y, TRANS_Z])
+    slam_pcd.rotate(R, center=(0,0,0))
+    slam_pcd.translate([TRANS_X, TRANS_Y, TRANS_Z])
 
-    # --- VISUAL CHECK ---
-    print("\n👀 Check Alignment... (Close window to see score)")
-    draw_registration_result(slam, gt, window_name="Manual Alignment Check")
+    # 5. Visual Check
+    print("\n👀 Opening Visualization... (Check if sides overlap!)")
+    draw_registration_result(slam_pcd, gt_pcd, window_name="Check Alignment")
 
-    # 3. ICP (Optional)
-    if USE_ICP:
-        print("3. Running ICP (Fine-tuning)...")
-        threshold = 0.1 
-        slam.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-        gt.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-
-        reg_p2l = o3d.pipelines.registration.registration_icp(
-            slam, gt, threshold, np.identity(4),
-            o3d.pipelines.registration.TransformationEstimationPointToPlane())
-        
-        print(f"   ICP Fitness: {reg_p2l.fitness:.4f}")
-        slam.transform(reg_p2l.transformation)
-        draw_registration_result(slam, gt, window_name="After ICP Result")
-    else:
-        print("3. Skipping ICP (Using Manual Alignment Only)")
-
-    # 4. Evaluation
+    # 6. Evaluation
     print("\n--- 📊 EVALUATION RESULTS ---")
-    dists = slam.compute_point_cloud_distance(gt)
-    accuracy = np.mean(dists)
+    
+    # Accuracy (SLAM -> GT)
+    dists_s2g = slam_pcd.compute_point_cloud_distance(gt_pcd)
+    accuracy = np.mean(dists_s2g)
     print(f"✅ Accuracy (Mean Error): {accuracy*100:.2f} cm")
+    print("   (Target: < 2.0 cm)")
 
-    dists_g2s = gt.compute_point_cloud_distance(slam)
+    # Completeness (GT -> SLAM)
+    dists_g2s = gt_pcd.compute_point_cloud_distance(slam_pcd)
     completeness = np.mean(dists_g2s)
     print(f"⚠️ Completeness (Mean Error): {completeness*100:.2f} cm")
+    print("   (Expected to be high due to missing top)")
 
 if __name__ == "__main__":
-    align_and_evaluate()
+    main()
