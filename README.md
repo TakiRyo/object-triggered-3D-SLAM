@@ -1,4 +1,4 @@
-# OTSLAM: Active Object Scanning System
+# OTSLAM: Active Object Scanning System  
 
 ## 📖 System Overview
 
