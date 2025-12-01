@@ -14,7 +14,7 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='optical_bridge',
-        arguments = ["0", "0", "0", "0", "0", "0", "camera_rgb_optical_frame", "realsense_rgb_frame"]
+        arguments = ["0", "0", "0", "1.57", "-1.57", "0", "camera_rgb_optical_frame", "realsense_rgb_frame"]
     )
 
     # --- RTAB-MAP SECTION ---
