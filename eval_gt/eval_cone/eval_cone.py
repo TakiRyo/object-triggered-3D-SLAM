@@ -1,4 +1,23 @@
 #3d_model
+
+# Dec. 1 result. 
+# (3d_model) ros2_env@2024-NEDO-DENKI-1:~/taki/otslam/eval_gt/eval_cone$ python3 eval_cone.py 
+# 📂 Loading SLAM: /home/ros2_env/taki/otslam/eval_gt/eval_cone/cone_slam.ply
+# 📍 Centered SLAM data to (0,0,0) for easier alignment.
+# 🔨 Loading GT: cone.stl
+# 🔨 Loading GT: cone.stl
+# ✅ Created Combined GT with 100000 points.
+
+# 👀 Opening Visualization... (Check positions!)
+
+# --- 📊 EVALUATION RESULTS (Combined) ---
+# ✅ Accuracy (Mean Error): 2.48 cm
+# ⚠️ Completeness (Mean Error): 4.18 cm
+
+# 💾 Saving visualization to file...
+# ✅ Saved merged result to: /home/ros2_env/taki/otslam/eval_gt/eval_cone/cone_evaluation_result.ply
+
+
 import open3d as o3d
 import trimesh
 import numpy as np
@@ -10,130 +29,130 @@ import os
 # ==========================================
 
 # 1. FILE PATHS
-# Path to your SLAM result (ply)
-SLAM_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_slam.ply"              
-# Path to the raw Gazebo mesh (dae)
-DAE_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_box/meshes/cardboard_box.dae"
+SLAM_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_cone/cone_slam.ply"
+GT_BLUE_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_cone/cone_blue/meshes/cone.stl"
+GT_RED_FILE  = "/home/ros2_env/taki/otslam/eval_gt/eval_cone/cone_red/meshes/cone.stl"
+OUTPUT_FILENAME = "cone_evaluation_result.ply"
 
-# 2. GAZEBO SCALING (From your .world file)
-# Fixes the "too big" or "wrong shape" issue
-# <scale>1.25932 1.00745 0.755591</scale>
-UNIT_SCALE = 0.001  # mm -> meters
-# SCALE_X = 1.25932
-# SCALE_Y = 1.00745
-# SCALE_Z = 0.755591
-SCALE_X = 1.62
-SCALE_Y = 1.1
-SCALE_Z = 0.50377
+# 2. GAZEBO SCALING (Check your .world file!)
+# Usually cones are uniformly scaled (e.g., 1.0 or 0.5)
+UNIT_SCALE = 0.01     # Set to 0.001 if STL is in mm
+SCALE_X = 1.0
+SCALE_Y = 1.0
+SCALE_Z = 1.0
 
-# 3. MANUAL ALIGNMENT (手動位置合わせ)
-# Adjust these to snap the Yellow box onto the Blue box
-# -----------------------------------------------------
-# Rotation (Degrees)
-ROT_X = 0.0   
-ROT_Y = 0.0   
-ROT_Z = 0.0   
+COMMON_Z = -0.3
 
-# Translation (Meters) - Shift relative to center
-# If Yellow is too high, decrease Z (e.g., -0.05)
-TRANS_X = 0.05  
-TRANS_Y = 0.0   
-TRANS_Z = 0.0  # Try adjusting this to match the floor!
-# -----------------------------------------------------
+# 3. MANUAL ALIGNMENT (Separate for each Cone)
+# You need to place Blue and Red where they belong in the SLAM map.
 
-def generate_scaled_gt():
-    """Loads DAE, converts to PCD, and applies Gazebo scaling."""
-    print(f"🔨 Generating GT from: {DAE_FILE}")
-    
-    # 1. Load Mesh
+# --- BLUE CONE CONFIG ---
+BLUE_ROT   = [0.0, 0.0, 0.0]   # Rot X, Y, Z
+BLUE_TRANS = [0.5, 0.5, COMMON_Z]   # Move X, Y, Z (Meters)
+
+# --- RED CONE CONFIG ---
+RED_ROT    = [0.0, 0.0, 0.0]
+RED_TRANS  = [-0.395, -0.36, COMMON_Z]   # Example: Maybe it's 1 meter away?
+
+# ==========================================
+
+def load_and_scale_gt(filename, color):
+    """Loads STL, Scales it, and colors it."""
+    print(f"🔨 Loading GT: {os.path.basename(filename)}")
     try:
-        mesh = trimesh.load(DAE_FILE, force='mesh')
+        mesh = trimesh.load(filename, force='mesh')
     except Exception as e:
-        print(f"Error loading DAE: {e}")
+        print(f"Error: {e}")
         return None
 
     if isinstance(mesh, trimesh.Scene):
         mesh = trimesh.util.concatenate(mesh.dump())
 
-    # 2. Convert to Open3D
-    mesh.export("temp_gt.ply")
-    gt_mesh = o3d.io.read_triangle_mesh("temp_gt.ply")
-    if os.path.exists("temp_gt.ply"): os.remove("temp_gt.ply")
+    # Trimesh -> Open3D
+    mesh.export("temp.ply")
+    gt_mesh = o3d.io.read_triangle_mesh("temp.ply")
+    if os.path.exists("temp.ply"): os.remove("temp.ply")
     
-    # 3. Sample Points
-    gt_pcd = gt_mesh.sample_points_uniformly(number_of_points=100000)
+    # Sample Points
+    pcd = gt_mesh.sample_points_uniformly(number_of_points=50000)
     
-    # 4. Apply Scaling (Non-Uniform Stretch)
-    points = np.asarray(gt_pcd.points)
-    
-    # Convert mm -> m
+    # Apply Scale
+    points = np.asarray(pcd.points)
     points = points * UNIT_SCALE
-    
-    # Apply Gazebo Stretch
     points[:, 0] *= SCALE_X
     points[:, 1] *= SCALE_Y
     points[:, 2] *= SCALE_Z
+    pcd.points = o3d.utility.Vector3dVector(points)
     
-    gt_pcd.points = o3d.utility.Vector3dVector(points)
-    
-    print(f"✅ GT Generated. Size: {gt_pcd.get_max_bound() - gt_pcd.get_min_bound()}")
-    return gt_pcd
+    # Paint color for visualization
+    pcd.paint_uniform_color(color)
+    return pcd
 
-def get_manual_rotation_matrix(rx, ry, rz):
-    rx, ry, rz = np.radians(rx), np.radians(ry), np.radians(rz)
-    R = o3d.geometry.get_rotation_matrix_from_xyz((rx, ry, rz))
-    return R
-
-def draw_registration_result(source, target, window_name="Result"):
-    source_temp = copy.deepcopy(source)
-    target_temp = copy.deepcopy(target)
-    source_temp.paint_uniform_color([1, 0.706, 0])     # SLAM = Yellow
-    target_temp.paint_uniform_color([0, 0.651, 0.929]) # GT = Blue
-    
-    # Axes: Red=X, Green=Y, Blue=Z
-    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0,0,0])
-    
-    o3d.visualization.draw_geometries([source_temp, target_temp, axes],
-                                      window_name=window_name)
+def get_rot_matrix(r_list):
+    rx, ry, rz = np.radians(r_list[0]), np.radians(r_list[1]), np.radians(r_list[2])
+    return o3d.geometry.get_rotation_matrix_from_xyz((rx, ry, rz))
 
 def main():
-    # 1. Generate the Correct GT
-    gt_pcd = generate_scaled_gt()
-    if gt_pcd is None: return
-
-    # 2. Load SLAM
+    # 1. Load SLAM
     print(f"📂 Loading SLAM: {SLAM_FILE}")
     slam_pcd = o3d.io.read_point_cloud(SLAM_FILE)
+    
+    # Center SLAM roughly to 0,0,0 so we aren't working with huge coordinates
+    slam_center = slam_pcd.get_center()
+    slam_pcd.translate(-slam_center)
+    print("📍 Centered SLAM data to (0,0,0) for easier alignment.")
 
-    # 3. Centering (Bring both to 0,0,0)
-    print("📍 Centering Clouds...")
-    slam_pcd.translate(-slam_pcd.get_center())
-    gt_pcd.translate(-gt_pcd.get_center())
+    # 2. Load & Scale GTs
+    gt_blue = load_and_scale_gt(GT_BLUE_FILE, [0, 0, 1]) # Blue
+    gt_red  = load_and_scale_gt(GT_RED_FILE,  [1, 0, 0]) # Red
 
-    # 4. Apply Manual Transform
-    print(f"🔄 Applying Manual Transform: Rot={ROT_X},{ROT_Y},{ROT_Z} | Trans={TRANS_X},{TRANS_Y},{TRANS_Z}")
-    R = get_manual_rotation_matrix(ROT_X, ROT_Y, ROT_Z)
-    slam_pcd.rotate(R, center=(0,0,0))
-    slam_pcd.translate([TRANS_X, TRANS_Y, TRANS_Z])
+    # 3. Apply Manual Transforms (Relative to SLAM center)
+    
+    # Transform Blue
+    R_blue = get_rot_matrix(BLUE_ROT)
+    gt_blue.rotate(R_blue, center=(0,0,0))
+    gt_blue.translate(BLUE_TRANS)
+
+    # Transform Red
+    R_red = get_rot_matrix(RED_ROT)
+    gt_red.rotate(R_red, center=(0,0,0))
+    gt_red.translate(RED_TRANS)
+
+    # 4. Merge GTs (Create the "Master Ground Truth")
+    gt_combined = gt_blue + gt_red
+    print(f"✅ Created Combined GT with {len(gt_combined.points)} points.")
 
     # 5. Visual Check
-    print("\n👀 Opening Visualization... (Check if sides overlap!)")
-    draw_registration_result(slam_pcd, gt_pcd, window_name="Check Alignment")
+    print("\n👀 Opening Visualization... (Check positions!)")
+    # Draw Axes to help with X/Y/Z direction
+    axes = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5, origin=[0,0,0])
+    
+    slam_pcd.paint_uniform_color([1, 0.706, 0]) # Yellow
+    o3d.visualization.draw_geometries([slam_pcd, gt_blue, gt_red, axes], 
+                                      window_name="Check Alignment")
 
     # 6. Evaluation
-    print("\n--- 📊 EVALUATION RESULTS ---")
+    print("\n--- 📊 EVALUATION RESULTS (Combined) ---")
     
-    # Accuracy (SLAM -> GT)
-    dists_s2g = slam_pcd.compute_point_cloud_distance(gt_pcd)
+    # Accuracy (SLAM -> Nearest GT Cone)
+    dists_s2g = slam_pcd.compute_point_cloud_distance(gt_combined)
     accuracy = np.mean(dists_s2g)
     print(f"✅ Accuracy (Mean Error): {accuracy*100:.2f} cm")
-    print("   (Target: < 2.0 cm)")
-
-    # Completeness (GT -> SLAM)
-    dists_g2s = gt_pcd.compute_point_cloud_distance(slam_pcd)
+    
+    # Completeness (Combined GT -> SLAM)
+    dists_g2s = gt_combined.compute_point_cloud_distance(slam_pcd)
     completeness = np.mean(dists_g2s)
     print(f"⚠️ Completeness (Mean Error): {completeness*100:.2f} cm")
-    print("   (Expected to be high due to missing top)")
+
+    # 7. SAVE RESULT (New!)
+    print("\n💾 Saving visualization to file...")
+    
+    # Merge SLAM + Blue GT + Red GT into one point cloud
+    # (In Open3D, '+' concatenates point clouds)
+    final_merged_pcd = slam_pcd + gt_blue + gt_red
+    
+    o3d.io.write_point_cloud(OUTPUT_FILENAME, final_merged_pcd)
+    print(f"✅ Saved merged result to: {os.path.abspath(OUTPUT_FILENAME)}")
 
 if __name__ == "__main__":
     main()

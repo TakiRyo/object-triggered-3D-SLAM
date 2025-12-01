@@ -1,4 +1,25 @@
 #3d_model
+
+# (3d_model) ros2_env@2024-NEDO-DENKI-1:~/taki/otslam/eval_gt/eval_cardboard$ python3 eval_cardboard.py 
+# 🔨 Generating GT from: /home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_box/meshes/cardboard_box.dae
+# ✅ GT Generated. Size: [0.49999612 0.39999451 0.23822203]
+# 📂 Loading SLAM: /home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_slam.ply
+# 📍 Centering Clouds...
+# 🔄 Applying Manual Transform: Rot=0.0,0.0,0.0 | Trans=0.0,0.0,-0.02
+
+# 👀 Opening Visualization... (Check if sides overlap!)
+
+# --- 📊 EVALUATION RESULTS ---
+# ✅ Accuracy (Mean Error): 4.19 cm
+#    (Target: < 2.0 cm)
+# ⚠️ Completeness (Mean Error): 4.37 cm
+#    (Expected to be high due to missing top)
+
+# 💾 Saving visualization to file...
+# ✅ Saved merged result to: /home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_eval_result.ply
+
+
+
 import open3d as o3d
 import trimesh
 import numpy as np
@@ -19,12 +40,12 @@ DAE_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_box/mesh
 # Fixes the "too big" or "wrong shape" issue
 # <scale>1.25932 1.00745 0.755591</scale>
 UNIT_SCALE = 0.001  # mm -> meters
-# SCALE_X = 1.25932
-# SCALE_Y = 1.00745
+SCALE_X = 1.25932
+SCALE_Y = 1.00745
 # SCALE_Z = 0.755591
-SCALE_X = 1.62
-SCALE_Y = 1.1
-SCALE_Z = 0.50377
+# SCALE_X = 1.62
+# SCALE_Y = 1.1
+SCALE_Z = 0.6
 
 # 3. MANUAL ALIGNMENT 
 # Adjust these to snap the Yellow box onto the Blue box
@@ -36,9 +57,12 @@ ROT_Z = 0.0
 
 # Translation (Meters) - Shift relative to center
 # If Yellow is too high, decrease Z (e.g., -0.05)
-TRANS_X = 0.05  
+TRANS_X = 0.0
 TRANS_Y = 0.0   
-TRANS_Z = 0.0  # Try adjusting this to match the floor!
+TRANS_Z = -0.02  # Try adjusting this to match the floor!
+
+NUMBER_OF_POINTS = 10000 #default 100,000
+OUTPUT_FILENAME = "cardboard_eval_result.ply"
 # -----------------------------------------------------
 
 def generate_scaled_gt():
@@ -61,7 +85,7 @@ def generate_scaled_gt():
     if os.path.exists("temp_gt.ply"): os.remove("temp_gt.ply")
     
     # 3. Sample Points
-    gt_pcd = gt_mesh.sample_points_uniformly(number_of_points=100000)
+    gt_pcd = gt_mesh.sample_points_uniformly(number_of_points=NUMBER_OF_POINTS )
     
     # 4. Apply Scaling (Non-Uniform Stretch)
     points = np.asarray(gt_pcd.points)
@@ -134,6 +158,19 @@ def main():
     completeness = np.mean(dists_g2s)
     print(f"⚠️ Completeness (Mean Error): {completeness*100:.2f} cm")
     print("   (Expected to be high due to missing top)")
+
+    # 7. SAVE RESULT (New Part!) 💾
+    print("\n💾 Saving visualization to file...")
+    
+    # Paint colors so they appear correctly in CloudCompare/MeshLab
+    slam_pcd.paint_uniform_color([1, 0.706, 0])      # Yellow
+    gt_pcd.paint_uniform_color([0, 0.651, 0.929])    # Blue
+    
+    # Merge and Save
+    final_merged_pcd = slam_pcd + gt_pcd
+    
+    o3d.io.write_point_cloud(OUTPUT_FILENAME, final_merged_pcd)
+    print(f"✅ Saved merged result to: {os.path.abspath(OUTPUT_FILENAME)}")
 
 if __name__ == "__main__":
     main()
