@@ -19,7 +19,7 @@ UNIT_SCALE = 1.0  # Use 0.001 if meshes are in mm
 
 # --- TABLE SCALE ---
 # <scale>...</scale> in Gazebo world
-TABLE_SCALE = [0.1, 0.1, 0.1] 
+TABLE_SCALE = [0.258, 0.258, 0.258] 
 
 # --- CHAIR SCALE ---
 # <scale>...</scale> in Gazebo world
@@ -32,7 +32,7 @@ CHAIR_SCALE = [0.0075, 0.0075, 0.0075]
 COMMON_Z = -0.6
 # [A] TABLE (Center)
 TABLE_ROT   = [0.0, 0.0, 0.0]  
-TABLE_TRANS = [0.0, 0.0,-0.5]
+TABLE_TRANS = [0.00, 0.17, 0.0]
 
 # red arrow (x) is right, green arrow (y) is up. blue arrow (z) is toward to me 
 
