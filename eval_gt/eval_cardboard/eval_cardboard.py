@@ -11,9 +11,9 @@ import os
 
 # 1. FILE PATHS
 # Path to your SLAM result (ply)
-SLAM_FILE = "Object_0.ply"              
+SLAM_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_slam.ply"              
 # Path to the raw Gazebo mesh (dae)
-DAE_FILE = "/home/ros2_env/taki/otslam/eval_gt/cardboard_box/meshes/cardboard_box.dae"
+DAE_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_box/meshes/cardboard_box.dae"
 
 # 2. GAZEBO SCALING (From your .world file)
 # Fixes the "too big" or "wrong shape" issue
