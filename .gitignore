@@ -18,6 +18,20 @@
 /ros2_ws/src/rtabmap_ros
 /ros2_ws/src/rtabmap
 
+#eval_gt
+/eval_gt/eval_cardboard/cardboard_box
+/eval_gt/eval_cone/cone_blue
+/eval_gt/eval_cone/cone_red
+/eval_gt/eval_table_chair/Chair
+/eval_gt/eval_table_chair/table_marble
+
+#eval_rtab
+/eval_rtab/eval_cardboard/cardboard_box
+/eval_rtab/eval_cone/cone_blue
+/eval_rtab/eval_cone/cone_red
+/eval_rtab/eval_table_chair/Chair
+/eval_rtab/eval_table_chair/table_marble
+
 
 #others
 *.ply
