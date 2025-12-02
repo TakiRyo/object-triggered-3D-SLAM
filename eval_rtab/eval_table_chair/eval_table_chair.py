@@ -28,7 +28,7 @@ import os
 
 # 1. FILE PATHS
 # Adjust this to your actual SLAM file name
-SLAM_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_table_chair/table_chair_slam.ply"
+SLAM_FILE = "/home/ros2_env/taki/otslam/eval_rtab/eval_table_chair/rtab_table_chair.ply"
 TABLE_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_table_chair/table_marble/meshes/table_lightmap.dae"
 CHAIR_FILE = "/home/ros2_env/taki/otslam/eval_gt/eval_table_chair/Chair/meshes/Chair.obj"
 
