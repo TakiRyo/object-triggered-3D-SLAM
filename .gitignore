@@ -9,12 +9,14 @@
 /ros2_ws/src/DynamixelSDK
 /ros2_ws/src/turtlebot3_simulations
 
-
-
 #maps
 /2d_map
 /3d_model/object_scan
 /fusion/hybrid_maps
+
+#rtabmap
+/ros2_ws/src/rtabmap_ros
+/ros2_ws/src/rtabmap
 
 
 #others

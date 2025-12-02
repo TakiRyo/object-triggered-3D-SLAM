@@ -27,6 +27,7 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'approx_sync': True,
             'queue_size': 20,
+            'approx_sync_max_interval': 0.15
         }],
         remappings=[
             ('rgb/image',       '/intel_realsense_r200_rgb/image_raw'),
