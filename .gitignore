@@ -23,3 +23,5 @@
 *.ply
 *.png
 *.jpg
+*.db
+*.bag
