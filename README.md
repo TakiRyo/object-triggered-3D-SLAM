@@ -11,7 +11,7 @@ This project implements an autonomous **"Move & Scan"** pipeline for structured 
 3.  **Orchestration (`system_manager`)**: A central manager commands the robot to drive to these points using the **Nav2** stack.
 4.  **Data Capture (`system_manager`)**: Once arrived, the robot freezes its movement and triggers the camera system to capture high-quality dataset frames.
 
------
+-----  
 
 ## 📦 Package 1: Lidar Detection
 
