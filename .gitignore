@@ -32,6 +32,13 @@
 /eval_rtab/eval_table_chair/Chair
 /eval_rtab/eval_table_chair/table_marble
 
+#eval
+/eval/eval_cardboard/cardboard_box
+/eval/eval_cone/cone_blue
+/eval/eval_cone/cone_red
+/eval/eval_table_chair/Chair
+/eval/eval_table_chair/table_marble
+
 
 #others
 *.ply
