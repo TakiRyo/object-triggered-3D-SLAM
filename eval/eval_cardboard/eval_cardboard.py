@@ -9,9 +9,11 @@ import os
 # ==========================================
 
 # 1. FILE PATHS
-PROPOSAL_FILE = "/home/ros2_env/taki/otslam/eval/eval_cardboard/cardboard_slam.ply"
+PROPOSAL_FILE = "/home/ros2_env/taki/otslam/eval/eval_cardboard/prop_cardboard.ply"
 RTAB_FILE     = "/home/ros2_env/taki/otslam/eval/eval_cardboard/rtab_cardboard.ply"
-GT_FILE       = "/home/ros2_env/taki/otslam/eval_gt/eval_cardboard/cardboard_box/meshes/cardboard_box.dae"
+GT_FILE       = "/home/ros2_env/taki/otslam/eval/eval_cardboard/cardboard_box/meshes/cardboard_box.dae"
+GT_PLY_PATH   = "/home/ros2_env/taki/otslam/eval/eval_cardboard/gt_cardboard.ply"
+RESULT_PATH ="/home/ros2_env/taki/otslam/eval/eval_cardboard/result_cardboard.ply"
 
 # 2. GT SCALING (Specific to this object)
 # <scale>1.25932 1.00745 0.6</scale>
@@ -127,19 +129,33 @@ def main():
     
     # Shift Left (Proposal vs GT)
     proposal_vis = copy.deepcopy(proposal)
-    proposal_vis.translate([-1.5, 0, 0])
+    proposal_vis.translate([-0.5, 0, 0])
     gt_vis_prop = copy.deepcopy(gt_pcd)
-    gt_vis_prop.translate([-1.5, 0, 0])
+    gt_vis_prop.translate([-0.5, 0, 0])
     
     # Shift Right (RTAB vs GT)
     rtab_vis = copy.deepcopy(rtab)
-    rtab_vis.translate([1.5, 0, 0])
+    rtab_vis.translate([0.5, 0, 0])
     gt_vis_rtab = copy.deepcopy(gt_pcd)
-    gt_vis_rtab.translate([1.5, 0, 0])
+    gt_vis_rtab.translate([0.5, 0, 0])
 
     o3d.visualization.draw_geometries([proposal_vis, gt_vis_prop, rtab_vis, gt_vis_rtab],
                                       window_name="Cardboard: Proposal vs RTAB-Map",
                                       width=1200, height=600)
+
+    # Save the scaled and aligned GT as a PLY file
+    output_gt_path = GT_PLY_PATH
+    print(f"💾 Saving GT to {output_gt_path}...")
+    o3d.io.write_point_cloud(output_gt_path, gt_pcd)
+    print("✅ GT saved successfully!")
+
+    # Save the combined visualization as a PLY file
+    
+    output_vis_path = RESULT_PATH
+    print(f"💾 Saving visualization to {output_vis_path}...")
+    combined_vis = proposal_vis + gt_vis_prop + rtab_vis + gt_vis_rtab
+    o3d.io.write_point_cloud(output_vis_path, combined_vis)
+    print("✅ Visualization saved successfully!")
 
 if __name__ == "__main__":
     main()

@@ -9,11 +9,15 @@ import os
 # ==========================================
 
 # 1. FILE PATHS
-PROPOSAL_FILE = "/home/ros2_env/taki/otslam/eval/eval_table_chair/table_chair_slam.ply"
+PROPOSAL_FILE = "/home/ros2_env/taki/otslam/eval/eval_table_chair/prop_table_chair.ply"
 RTAB_FILE     = "/home/ros2_env/taki/otslam/eval/eval_table_chair/rtab_table_chair.ply"
 
 TABLE_FILE    = "/home/ros2_env/taki/otslam/eval/eval_table_chair/table_marble/meshes/table_lightmap.dae"
 CHAIR_FILE    = "/home/ros2_env/taki/otslam/eval/eval_table_chair/Chair/meshes/Chair.obj"
+
+# 3. Add paths for saving GT and result
+GT_PLY_PATH   = "/home/ros2_env/taki/otslam/eval/eval_table_chair/gt_table_chair.ply"
+RESULT_PATH = "/home/ros2_env/taki/otslam/eval/eval_table_chair/result_table_chair.ply"
 
 # 2. GT SCALING & PLACEMENT (Based on your working script)
 UNIT_SCALE = 1.0
@@ -26,6 +30,8 @@ CHAIR_1_ROT = [0.0, 0.0, 0.0];    CHAIR_1_TRANS = [0.6, 1.45, COMMON_Z]
 CHAIR_2_ROT = [0.0, 0.0, 0.0];    CHAIR_2_TRANS = [-0.45, 1.45, COMMON_Z]
 CHAIR_3_ROT = [0.0, 0.0, 180.0];  CHAIR_3_TRANS = [-0.6, -1.25, COMMON_Z]
 CHAIR_4_ROT = [0.0, 0.0, 180.0];  CHAIR_4_TRANS = [0.6, -1.25, COMMON_Z]
+
+
 
 # ==========================================
 
@@ -130,6 +136,17 @@ def main():
 
     o3d.visualization.draw_geometries([proposal_vis, gt_vis_prop, rtab_vis, gt_vis_rtab],
                                       window_name="Left: Proposal vs GT | Right: RTAB vs GT")
+
+    # Save the scaled and aligned GT as a PLY file
+    print(f"💾 Saving GT to {GT_PLY_PATH}...")
+    o3d.io.write_point_cloud(GT_PLY_PATH, gt_scene)
+    print("✅ GT saved successfully!")
+
+    # Save the combined visualization as a PLY file
+    print(f"💾 Saving result visualization to {RESULT_PATH}...")
+    combined_vis = proposal_vis + gt_vis_prop + rtab_vis + gt_vis_rtab
+    o3d.io.write_point_cloud(RESULT_PATH, combined_vis)
+    print("✅ Result visualization saved successfully!")
 
 if __name__ == "__main__":
     main()
