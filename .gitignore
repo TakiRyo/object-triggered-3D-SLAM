@@ -11,26 +11,13 @@
 
 #maps
 /2d_map
-/3d_model/object_scan
+/3d_model/object_scan_good
+/3d_model/object_scan_2
 /fusion/hybrid_maps
 
 #rtabmap
 /ros2_ws/src/rtabmap_ros
 /ros2_ws/src/rtabmap
-
-#eval_gt
-/eval_gt/eval_cardboard/cardboard_box
-/eval_gt/eval_cone/cone_blue
-/eval_gt/eval_cone/cone_red
-/eval_gt/eval_table_chair/Chair
-/eval_gt/eval_table_chair/table_marble
-
-#eval_rtab
-/eval_rtab/eval_cardboard/cardboard_box
-/eval_rtab/eval_cone/cone_blue
-/eval_rtab/eval_cone/cone_red
-/eval_rtab/eval_table_chair/Chair
-/eval_rtab/eval_table_chair/table_marble
 
 #eval
 /eval/eval_cardboard/cardboard_box
@@ -38,7 +25,6 @@
 /eval/eval_cone/cone_red
 /eval/eval_table_chair/Chair
 /eval/eval_table_chair/table_marble
-
 
 #others
 *.ply
