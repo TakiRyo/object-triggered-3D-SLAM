@@ -45,7 +45,7 @@ def generate_launch_description():
             'scan_step_threshold': 2.0,
             'points_count_normal': 6,
             'points_count_big': 8,
-            'degree_visiting_points': 10.0,
+            'degree_visiting_points': 20.0,
         }]
     )
 
