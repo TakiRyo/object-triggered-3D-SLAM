@@ -255,7 +255,7 @@ private:
               
               p.pose.position.x = c.cx + vp_radius * std::cos(angle);
               p.pose.position.y = c.cy + vp_radius * std::sin(angle);
-              p.pose.position.z = 0.2;
+              p.pose.position.z = 0.1;
 
               // Orientation (Face Center)
               float yaw = angle + M_PI; 

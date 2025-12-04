@@ -16,9 +16,11 @@ find_package(std_srvs REQUIRED)
 # publish object and wall cluster
 add_executable(lidar_cluster_publisher src/lidar_cluster_publisher.cpp)
 # estimate object size and publishe marker. 
-add_executable(object_goal_selector src/2_object_goal_selector.cpp)
+add_executable(object_goal_selector src/object_goal_selector.cpp)
+add_executable(multi_object_goal_selector src/multi_object_goal_selector.cpp)
 # publish goal node.
-add_executable(send_goal_node src/1_send_goal_node.cpp)
+add_executable(send_goal_node src/send_goal_node.cpp)
+add_executable(multi_send_goal_node src/multi_send_goal_node.cpp)
 
 ament_target_dependencies(lidar_cluster_publisher
   rclcpp
@@ -35,6 +37,24 @@ ament_target_dependencies(send_goal_node
   geometry_msgs
   nav2_msgs
   visualization_msgs
+)
+
+ament_target_dependencies(multi_send_goal_node
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  nav2_msgs
+  visualization_msgs
+)
+
+ament_target_dependencies(multi_object_goal_selector
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  visualization_msgs
+  std_srvs
 )
 
 ament_target_dependencies(object_goal_selector
@@ -57,6 +77,8 @@ install(TARGETS
   lidar_cluster_publisher
   send_goal_node
   object_goal_selector
+  multi_send_goal_node
+  multi_object_goal_selector
   DESTINATION lib/${PROJECT_NAME}
 )
 

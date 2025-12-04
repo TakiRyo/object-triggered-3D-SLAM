@@ -29,10 +29,10 @@ def generate_launch_description():
     )
 
     # === Object goal selector (filters + stabilizes clusters) ===
-    object_selector = Node(
+    multi_goal_selector = Node(
         package='lidar_detection',
-        executable='object_goal_selector',
-        name='object_goal_selector',
+        executable='multi_object_goal_selector',
+        name='multi_goal_selector',
         output='screen',
         parameters=[{
             'cluster_distance_threshold': 4.0,
@@ -45,15 +45,15 @@ def generate_launch_description():
             'scan_step_threshold': 2.0,
             'points_count_normal': 6,
             'points_count_big': 8,
-            # 'degree_visiting_points': 10.0,
+            'degree_visiting_points': 10.0,
         }]
     )
 
     # === Goal sender (publishes visiting points & Nav2 goals) ===
-    goal_sender = Node(
+    multi_goal_sender = Node(
         package='lidar_detection',
-        executable='send_goal_node',
-        name='goal_sender',
+        executable='multi_send_goal_node',
+        name='multi_goal_sender',
         output='screen',
         parameters=[{
             'reach_threshold': 0.60,
@@ -67,6 +67,6 @@ def generate_launch_description():
             description='Use simulation (Gazebo) clock if true'),
 
         lidar_cluster,
-        object_selector,
-        goal_sender,
+        multi_goal_selector,
+        multi_goal_sender,
     ])
