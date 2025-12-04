@@ -1,5 +1,7 @@
 # OTSLAM: Active Object Scanning System  
 
+continious scan branch  
+
 ## 📖 System Overview  
 
 This project implements an autonomous **"Move & Scan"** pipeline for structured 3D reconstruction. It utilizes 2D LiDAR data to detect and classify objects in the environment, tracks their persistence over time, and coordinates a mobile robot to navigate around them. Upon reaching specific viewpoints, the robot stabilizes and captures synchronized RGB-D data and camera poses for high-quality 3D mapping.
