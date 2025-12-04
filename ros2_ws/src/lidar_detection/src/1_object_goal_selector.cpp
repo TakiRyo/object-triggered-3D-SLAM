@@ -2,9 +2,8 @@
  * Node Name: ObjectClusterMarker
  * Role: Tracker & Goal Generator
  * Update: 
- * - Adaptive Scanning Density (Configurable)
- * - Normal Objects (< Threshold) -> 6 Points
- * - Big Objects (> Threshold) -> 8 Points
+ * - Fixed compilation error (removed duplicate variable declaration).
+ * - TF2 Transform logic remains to ensure goals are in the Map frame.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -12,12 +11,14 @@
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <cmath>
 #include <vector>
 #include <algorithm>
 #include <string>
 
-// --- Tracking Structure ---
 struct TrackedCluster
 {
   float min_x, max_x;
@@ -36,7 +37,6 @@ public:
   ObjectClusterMarker()
   : Node("object_goal_selector")
   {
-    // --- Parameters ---
     this->declare_parameter("cluster_distance_threshold", 0.4);
     this->declare_parameter("min_cluster_points", 10);          
     this->declare_parameter("wall_thickness_threshold", 0.2);   
@@ -44,10 +44,13 @@ public:
     this->declare_parameter("lock_margin", 0.5);                
     this->declare_parameter("smoothing_factor", 1.0); 
     this->declare_parameter("visiting_point_buffer", 0.2); 
-    this->declare_parameter("scan_step_threshold", 1.0); // Size to switch modes (meters)
-    this->declare_parameter("points_count_normal", 6);   // Points for small objects
-    this->declare_parameter("points_count_big", 8);      // Points for big objects
-    this->declare_parameter("degree_visiting_points", 10.0); // Default degree step for visiting points
+    this->declare_parameter("scan_step_threshold", 1.0);
+    this->declare_parameter("points_count_normal", 6);   
+    this->declare_parameter("points_count_big", 8);      
+    this->declare_parameter("degree_visiting_points", 10.0);
+    
+    // Parameter for the global frame (usually "map")
+    this->declare_parameter("global_frame", "map");
 
     cluster_distance_threshold_ = this->get_parameter("cluster_distance_threshold").as_double();
     min_cluster_points_         = this->get_parameter("min_cluster_points").as_int();
@@ -56,13 +59,12 @@ public:
     lock_margin_                = this->get_parameter("lock_margin").as_double();
     smoothing_factor_           = this->get_parameter("smoothing_factor").as_double();
     visiting_point_buffer_      = this->get_parameter("visiting_point_buffer").as_double();
-    
     scan_step_threshold_        = this->get_parameter("scan_step_threshold").as_double();
     points_count_normal_        = this->get_parameter("points_count_normal").as_int();
     points_count_big_           = this->get_parameter("points_count_big").as_int();
     degree_visiting_points_     = this->get_parameter("degree_visiting_points").as_double();
+    global_frame_               = this->get_parameter("global_frame").as_string();
 
-    // --- Subscribers & Publishers ---
     object_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       "/object_clusters", 10,
       std::bind(&ObjectClusterMarker::cloudCallback, this, std::placeholders::_1));
@@ -70,23 +72,26 @@ public:
     candidate_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/candidate_clusters", 10);
     stable_pub_    = this->create_publisher<visualization_msgs::msg::MarkerArray>("/stable_clusters", 10);
     debug_pub_     = this->create_publisher<visualization_msgs::msg::MarkerArray>("/debug_lock_zones", 10);
-    
-    // Publishes Markers with correct Position AND Orientation
     goal_pub_      = this->create_publisher<visualization_msgs::msg::MarkerArray>("/object_visiting_points", 10);
 
     mode_service_ = this->create_service<std_srvs::srv::SetBool>(
         "set_tracking_mode",
         std::bind(&ObjectClusterMarker::handleModeSwitch, this, std::placeholders::_1, std::placeholders::_2));
 
-    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready.");
-    RCLCPP_INFO(this->get_logger(), "   - Scan Logic: Normal=%d, Big=%d (Threshold: %.1fm)", 
-        points_count_normal_, points_count_big_, scan_step_threshold_);
+    // ★ TF2 Setup
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready with TF. Output Frame: %s", global_frame_.c_str());
   }
 
 private:
   bool tracking_enabled_ = true; 
   std::vector<TrackedCluster> candidates_;      
   std::vector<TrackedCluster> stable_objects_;  
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  // Removed duplicate global_frame_ declaration here
 
   void handleModeSwitch(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
                         std::shared_ptr<std_srvs::srv::SetBool::Response> response)
@@ -126,16 +131,31 @@ private:
     rclcpp::Time now = this->get_clock()->now();
 
     if (!tracking_enabled_) {
-        publishMarkers(now, msg->header.frame_id);
+        // If frozen, just republish existing stable objects in Map frame
+        publishMarkers(now, global_frame_);
         return; 
     }
 
+    // ★ 1. Get Transform from Sensor Frame to Map Frame
+    geometry_msgs::msg::TransformStamped transform_stamped;
+    try {
+      transform_stamped = tf_buffer_->lookupTransform(
+        global_frame_, msg->header.frame_id, 
+        tf2::TimePointZero); // Get latest available
+    } catch (tf2::TransformException &ex) {
+      RCLCPP_WARN(this->get_logger(), "Could not transform %s to %s: %s", 
+        msg->header.frame_id.c_str(), global_frame_.c_str(), ex.what());
+      return;
+    }
+
+    // Extract points in LOCAL frame first
     std::vector<std::pair<float, float>> points;
     sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
     sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
     for (; iter_x != iter_x.end(); ++iter_x, ++iter_y) points.emplace_back(*iter_x, *iter_y);
     if (points.empty()) return;
 
+    // Cluster logic (using local distances)
     std::vector<std::vector<std::pair<float, float>>> clusters;
     std::vector<std::pair<float, float>> current;
     current.push_back(points.front());
@@ -150,6 +170,7 @@ private:
     }
     if (current.size() >= (size_t)min_cluster_points_) clusters.push_back(current);
 
+    // Create candidates and ★ TRANSFORM TO MAP FRAME
     std::vector<TrackedCluster> raw_observations;
     for (const auto &cluster : clusters) {
         float min_x = 1e6, max_x = -1e6, min_y = 1e6, max_y = -1e6;
@@ -160,14 +181,33 @@ private:
         float w = max_x - min_x; float h = max_y - min_y;
         if (std::min(w, h) < wall_thickness_threshold_) continue;
 
+        // Calculate LOCAL centroid
+        float local_cx = (min_x + max_x)/2.0f;
+        float local_cy = (min_y + max_y)/2.0f;
+
+        // ★ Apply Transform to Center (Local -> Map)
+        geometry_msgs::msg::PointStamped local_pt, map_pt;
+        local_pt.point.x = local_cx;
+        local_pt.point.y = local_cy;
+        local_pt.point.z = 0.0;
+        
+        // Manual Transform Application or doTransform
+        // Simple 2D transform math:
+        // x' = tx + x*cos(q) - y*sin(q) ... 
+        // Safer to use tf2::doTransform
+        tf2::doTransform(local_pt, map_pt, transform_stamped);
+
         TrackedCluster raw;
-        raw.cx = (min_x + max_x)/2.0f; raw.cy = (min_y + max_y)/2.0f;
-        raw.width = w; raw.height = h;
+        raw.cx = map_pt.point.x; 
+        raw.cy = map_pt.point.y;
+        raw.width = w; // Width assumes rotation doesn't change BBox size drastically (simplified)
+        raw.height = h;
         raw.lock_radius = calculateLockRadius(w, h);
         raw.first_seen = now; raw.last_seen = now; raw.stable = false;
         raw_observations.push_back(raw);
     }
 
+    // Tracking logic (Now happens in MAP frame, so it's consistent!)
     for (auto &raw : raw_observations) {
         bool matched = false;
         for (auto &stable : stable_objects_) {
@@ -184,6 +224,7 @@ private:
         if (!matched) candidates_.push_back(raw);
     }
 
+    // Cleanup
     auto it = candidates_.begin();
     while (it != candidates_.end()) {
         double age = (now - it->first_seen).seconds();
@@ -192,7 +233,7 @@ private:
             it->stable = true;
             stable_objects_.push_back(*it);
             it = candidates_.erase(it);
-            RCLCPP_INFO(this->get_logger(), "🔒 Object Locked (Green).");
+            RCLCPP_INFO(this->get_logger(), "🔒 Object Locked in MAP frame at (%.2f, %.2f)", it->cx, it->cy);
         } else if (unseen > 0.5) {
             it = candidates_.erase(it);
         } else {
@@ -200,7 +241,7 @@ private:
         }
     }
 
-    publishMarkers(now, msg->header.frame_id);
+    publishMarkers(now, global_frame_);
   }
 
   void publishMarkers(rclcpp::Time now, std::string frame_id) {
@@ -220,7 +261,7 @@ private:
           m.color.r = r; m.color.g = g; m.color.b = b; m.color.a = 0.8;
           stable_array.markers.push_back(m);
 
-          // 2. The Lock Zone (Red Circle)
+          // 2. The Lock Zone
           visualization_msgs::msg::Marker zone;
           zone.header.frame_id = frame_id; zone.header.stamp = now;
           zone.ns = "lock_zone"; zone.id = id++; zone.type = visualization_msgs::msg::Marker::CYLINDER;
@@ -229,43 +270,40 @@ private:
           zone.scale.x = c.lock_radius * 2.0; zone.scale.y = c.lock_radius * 2.0; zone.scale.z = 0.05;
           zone.color.r = 1.0; zone.color.a = 0.1;
           debug_array.markers.push_back(zone);
-        
+
           // 3. ★ ADAPTIVE VISITING POINTS ★
           float vp_radius = c.lock_radius + visiting_point_buffer_;
-        
-          // Logic: Dynamic Point Count based on Parameters
-          float diagonal = std::sqrt(c.width*c.width + c.height*c.height);
-          int num_points = (diagonal > scan_step_threshold_) ? points_count_big_ : points_count_normal_;
+          int obj_id_index = &c - &stable_objects_[0]; 
 
-          for (int i=0; i<num_points; i++) {
+          double num_points_full_circle = 360.0 / degree_visiting_points_; 
+
+          for (int i = 0; i < static_cast<int>(std::ceil(num_points_full_circle)); i++) {
               visualization_msgs::msg::Marker p;
               p.header.frame_id = frame_id; p.header.stamp = now;
-              p.ns = "visiting_points"; 
+              p.ns = "visiting_points";
               
-              // ID Encoding: Object ID * 10 + Point Index
-              // Since max points might be 8, multiplier 10 is still safe (0-9).
-              int obj_id_index = &c - &stable_objects_[0]; 
-              p.id = (obj_id_index * 10) + i; 
-            
-              p.type = visualization_msgs::msg::Marker::ARROW; 
+              // WARNING: GOAL SENDER MUST BE UPDATED TO USE / 100 
+              // TO HANDLE THIS MANY POINTS!
+              p.id = (obj_id_index * 100) + i; 
+
+              p.type = visualization_msgs::msg::Marker::ARROW;
               p.action = visualization_msgs::msg::Marker::ADD;
-              
-              // Calculate Point on Circle using Trig
-              float angle = (2.0 * M_PI / num_points) * i;
-              
+
+              double angle = (M_PI / 180.0) * (degree_visiting_points_ * i); 
+
               p.pose.position.x = c.cx + vp_radius * std::cos(angle);
               p.pose.position.y = c.cy + vp_radius * std::sin(angle);
               p.pose.position.z = 0.2;
 
               // Orientation (Face Center)
-              float yaw = angle + M_PI; 
+              double yaw = angle + M_PI;
 
               p.pose.orientation.w = std::cos(yaw * 0.5);
               p.pose.orientation.z = std::sin(yaw * 0.5);
               p.pose.orientation.x = 0.0;
               p.pose.orientation.y = 0.0;
 
-              p.scale.x = 0.3; p.scale.y = 0.05; p.scale.z = 0.05; 
+              p.scale.x = 0.3; p.scale.y = 0.05; p.scale.z = 0.05;
               p.color.r = 0.0; p.color.g = 1.0; p.color.b = 1.0; p.color.a = 0.9;
               goals_array.markers.push_back(p);
           }
@@ -276,6 +314,7 @@ private:
           m.header.frame_id = frame_id; m.header.stamp = now;
           m.ns = "candidate"; m.id = id++; m.type = visualization_msgs::msg::Marker::CUBE;
           m.action = visualization_msgs::msg::Marker::ADD;
+          // Note: Candidates are now in MAP frame too
           m.pose.position.x = c.cx; m.pose.position.y = c.cy; m.pose.position.z = 0.2;
           m.scale.x = c.width; m.scale.y = c.height; m.scale.z = 0.4;
           m.color.r = 1.0; m.color.g = 1.0; m.color.b = 0.0; m.color.a = 0.6;
@@ -296,6 +335,7 @@ private:
   double scan_step_threshold_; 
   int min_cluster_points_, points_count_normal_, points_count_big_;
   double degree_visiting_points_;
+  std::string global_frame_;
 };
 
 int main(int argc, char **argv) {

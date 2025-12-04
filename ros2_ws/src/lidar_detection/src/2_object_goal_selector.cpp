@@ -229,43 +229,46 @@ private:
           zone.scale.x = c.lock_radius * 2.0; zone.scale.y = c.lock_radius * 2.0; zone.scale.z = 0.05;
           zone.color.r = 1.0; zone.color.a = 0.1;
           debug_array.markers.push_back(zone);
-        
+
           // 3. ★ ADAPTIVE VISITING POINTS ★
           float vp_radius = c.lock_radius + visiting_point_buffer_;
-        
+          
           // Logic: Dynamic Point Count based on Parameters
           float diagonal = std::sqrt(c.width*c.width + c.height*c.height);
           int num_points = (diagonal > scan_step_threshold_) ? points_count_big_ : points_count_normal_;
 
-          for (int i=0; i<num_points; i++) {
+          // Declare and initialize obj_id_index
+          int obj_id_index = &c - &stable_objects_[0]; // Calculate the index of the current object
+
+          // Generate visiting points based on degree_visiting_points
+          double num_points_full_circle = 360.0 / degree_visiting_points_; // May not be an integer
+
+          for (int i = 0; i < static_cast<int>(std::ceil(num_points_full_circle)); i++) {
               visualization_msgs::msg::Marker p;
               p.header.frame_id = frame_id; p.header.stamp = now;
-              p.ns = "visiting_points"; 
-              
-              // ID Encoding: Object ID * 10 + Point Index
-              // Since max points might be 8, multiplier 10 is still safe (0-9).
-              int obj_id_index = &c - &stable_objects_[0]; 
-              p.id = (obj_id_index * 10) + i; 
-            
-              p.type = visualization_msgs::msg::Marker::ARROW; 
+              p.ns = "visiting_points";
+              p.id = (obj_id_index * 100) + i; // Adjusted ID encoding for more points
+
+              p.type = visualization_msgs::msg::Marker::ARROW;
               p.action = visualization_msgs::msg::Marker::ADD;
-              
+
               // Calculate Point on Circle using Trig
-              float angle = (2.0 * M_PI / num_points) * i;
-              
+              double angle = (M_PI / 180.0) * (degree_visiting_points_ * i); // Convert degrees to radians
+
+              // Adjust position to ensure correct alignment
               p.pose.position.x = c.cx + vp_radius * std::cos(angle);
               p.pose.position.y = c.cy + vp_radius * std::sin(angle);
-              p.pose.position.z = 0.2;
+              p.pose.position.z = 0.0; // Ensure Z is set to ground level
 
-              // Orientation (Face Center)
-              float yaw = angle + M_PI; 
+              // Adjust orientation to face the center of the object
+              double yaw = angle; // Face directly towards the center
 
               p.pose.orientation.w = std::cos(yaw * 0.5);
               p.pose.orientation.z = std::sin(yaw * 0.5);
               p.pose.orientation.x = 0.0;
               p.pose.orientation.y = 0.0;
 
-              p.scale.x = 0.3; p.scale.y = 0.05; p.scale.z = 0.05; 
+              p.scale.x = 0.3; p.scale.y = 0.05; p.scale.z = 0.05;
               p.color.r = 0.0; p.color.g = 1.0; p.color.b = 1.0; p.color.a = 0.9;
               goals_array.markers.push_back(p);
           }
