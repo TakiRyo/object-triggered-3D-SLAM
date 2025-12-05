@@ -39,15 +39,19 @@ def generate_launch_description():
             'min_cluster_points': 8,
             'wall_thickness_threshold': 0.3,
             'stability_time': 3.0,
-            'lock_margin': 1.0,
+            'lock_margin': 1.5,
             'smoothing_factor': 1.0,
             'visiting_point_buffer': 0.1,
             'scan_step_threshold': 2.0,
             'points_count_normal': 6,
             'points_count_big': 8,
             'degree_visiting_points': 20.0,
+            'scan_point_interval': 1.0, #distance between visiting points in meters
+            "min_scan_points": 8,
+
         }]
     )
+
 
     # === Goal sender (publishes visiting points & Nav2 goals) ===
     multi_goal_sender = Node(
