@@ -13,6 +13,9 @@
 /2d_map
 /3d_model/object_scan_good
 /3d_model/object_scan_2
+/3d_model/object_multi_1
+/3d_model/object_multi_2
+/3d_model/object_multi_3
 /fusion/hybrid_maps
 
 #rtabmap
