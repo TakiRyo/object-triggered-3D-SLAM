@@ -22,7 +22,7 @@ public:
     // 1. Subscribe to Object Clusters (Your Blue Points)
     // Ensure this matches the topic from LidarClusterPublisher
     cluster_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "/object_clusters", 10, std::bind(&ObjectMapFilter::clusterCallback, this, std::placeholders::_1));
+      "/lidar_object_clusters", 10, std::bind(&ObjectMapFilter::clusterCallback, this, std::placeholders::_1));
 
     // 2. Subscribe to Virtual Scan (To know where walls are)
     virtual_scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(

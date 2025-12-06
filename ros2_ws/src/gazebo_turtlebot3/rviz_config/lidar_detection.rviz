@@ -140,19 +140,71 @@ Visualization Manager:
       Use Timestamp: false
       Value: false
     - Class: rviz_default_plugins/TF
-      Enabled: false
+      Enabled: true
       Frame Timeout: 15
       Frames:
         All Enabled: true
+        base_footprint:
+          Value: true
+        base_link:
+          Value: true
+        base_scan:
+          Value: true
+        camera_depth_optical_frame:
+          Value: true
+        camera_rgb_frame:
+          Value: true
+        camera_rgb_optical_frame:
+          Value: true
+        caster_back_left_link:
+          Value: true
+        caster_back_right_link:
+          Value: true
+        imu_link:
+          Value: true
+        map:
+          Value: true
+        odom:
+          Value: true
+        realsense_depth_frame:
+          Value: true
+        realsense_link:
+          Value: true
+        wheel_left_link:
+          Value: true
+        wheel_right_link:
+          Value: true
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: false
       Tree:
-        {}
+        map:
+          odom:
+            base_footprint:
+              base_link:
+                base_scan:
+                  {}
+                caster_back_left_link:
+                  {}
+                caster_back_right_link:
+                  {}
+                imu_link:
+                  {}
+                realsense_link:
+                  camera_rgb_frame:
+                    camera_rgb_optical_frame:
+                      {}
+                  realsense_depth_frame:
+                    camera_depth_optical_frame:
+                      {}
+                wheel_left_link:
+                  {}
+                wheel_right_link:
+                  {}
       Update Interval: 0
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -256,17 +308,17 @@ Visualization Manager:
       Use rainbow: true
       Value: false
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
+      Enabled: true
       Name: Stable_cluster
       Namespaces:
-        {}
+        stable: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /stable_clusters
-      Value: false
+      Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: false
       Name: Candi_cluster
@@ -292,17 +344,17 @@ Visualization Manager:
         Value: /debug_lock_zones
       Value: false
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
+      Enabled: true
       Name: Visiting_points
       Namespaces:
-        {}
+        visiting_points: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /object_visiting_points
-      Value: false
+      Value: true
     - Alpha: 1
       Auto Size:
         Auto Size Factor: 1
@@ -347,7 +399,7 @@ Visualization Manager:
       Axes Radius: 0.10000000149011612
       Class: rviz_default_plugins/Pose
       Color: 255; 25; 0
-      Enabled: false
+      Enabled: true
       Head Length: 0.30000001192092896
       Head Radius: 0.10000000149011612
       Name: Goal_pose
@@ -361,7 +413,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /manager/target_pose
-      Value: false
+      Value: true
     - Alpha: 1
       Buffer Length: 1
       Class: rviz_default_plugins/Path
@@ -509,7 +561,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /final_dynamic_objects
+        Value: /object_clusters
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -559,7 +611,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 36.32432556152344
+      Distance: 21.78352928161621
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -597,5 +649,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1539
-  X: 2110
-  Y: 74
+  X: 2109
+  Y: 73
