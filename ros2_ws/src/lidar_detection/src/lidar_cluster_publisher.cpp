@@ -77,6 +77,7 @@ public:
     this->declare_parameter("wall_min_points", 20);
     this->declare_parameter("object_length_threshold", 1.0);
     this->declare_parameter("object_max_points", 20);
+
     this->declare_parameter("max_range_ratio", 1.0);
     this->declare_parameter("obj_len_max", 1.0);
     this->declare_parameter("wal_len_min", 2.0);
