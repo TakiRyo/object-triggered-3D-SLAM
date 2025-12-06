@@ -23,6 +23,15 @@ add_executable(multi_object_goal_selector src/2_multi_object_goal_selector.cpp)
 add_executable(send_goal_node src/send_goal_node.cpp)
 add_executable(multi_send_goal_node src/multi_send_goal_node.cpp)
 
+# check new object
+add_executable(object_filter src/object_filter.cpp)
+ament_target_dependencies(object_filter
+  rclcpp 
+  sensor_msgs
+  tf2_ros
+  tf2_geometry_msgs
+)
+
 ament_target_dependencies(lidar_cluster_publisher
   rclcpp
   sensor_msgs
@@ -90,6 +99,7 @@ install(TARGETS
   object_goal_selector
   multi_send_goal_node
   multi_object_goal_selector
+  object_filter
   DESTINATION lib/${PROJECT_NAME}
 )
 

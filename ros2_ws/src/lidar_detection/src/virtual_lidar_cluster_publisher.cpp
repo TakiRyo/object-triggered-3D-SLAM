@@ -1,13 +1,3 @@
-/**
- * ------------------------------------------------------------
- * LiDAR Cluster Classification Node (Enhanced with Virtual Scan)
- * ------------------------------------------------------------
- * 1. Subtraction: Removes points that exist in Virtual Map.
- * 2. Clustering: Groups the remaining "New" points.
- * 3. Classification: Checks size/linearity to confirm Object vs Noise.
- * ------------------------------------------------------------
- */
-
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -19,6 +9,7 @@
 #include <cmath>
 #include <vector>
 #include <mutex>
+#include <limits> // For infinity
 
 class LidarClusterPublisher : public rclcpp::Node
 {
@@ -32,13 +23,15 @@ public:
     this->declare_parameter("gap_threshold", 0.2);
     this->declare_parameter("min_cluster_points", 1);
     this->declare_parameter("max_range_ratio", 1.0);
-    this->declare_parameter("diff_threshold", 1.0); // 30cm difference needed to be "New"
+    
+    // ★ CRITICAL: 1.0m is too big. 0.3m is safer for detecting people near walls.
+    this->declare_parameter("diff_threshold", 0.3); 
 
     // Classification Limits
     this->declare_parameter("wal_len_min", 2.0);
-    this->declare_parameter("wal_lin_max", 0.02); // Slightly relaxed for real world
+    this->declare_parameter("wal_lin_max", 0.05); 
     this->declare_parameter("wal_nmp_min", 15);
-    this->declare_parameter("obj_len_max", 1.2);  // Max size for a "visiting target"
+    this->declare_parameter("obj_len_max", 1.2);
     this->declare_parameter("obj_nmp_min", 2);
 
     // Get parameters
@@ -61,6 +54,9 @@ public:
       "/virtual_scan", 10, std::bind(&LidarClusterPublisher::virtualScanCallback, this, std::placeholders::_1));
 
     // ---- Publishers ----
+    // ★ NEW: The "Difference Scan" for debugging Step 1
+    diff_scan_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("/possibly_new_scan", 10);
+
     wall_pub_    = this->create_publisher<sensor_msgs::msg::PointCloud2>("/wall_clusters", 10);
     object_pub_  = this->create_publisher<sensor_msgs::msg::PointCloud2>("/object_clusters", 10);
     unknown_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/unknown_clusters", 10);
@@ -77,7 +73,7 @@ private:
     last_virtual_scan_ = msg;
   }
 
-  // ---------- Helper: Compute Cluster Length ----------
+  // Helper: Cluster Length
   float computeClusterLength(const std::vector<std::pair<float,float>>& cluster)
   {
     float min_x = 1e6, max_x = -1e6, min_y = 1e6, max_y = -1e6;
@@ -88,7 +84,7 @@ private:
     return std::sqrt(std::pow(max_x - min_x, 2) + std::pow(max_y - min_y, 2));
   }
 
-  // ---------- Helper: Compute Linearity (PCA) ----------
+  // Helper: Linearity
   float computeLinearity(const std::vector<std::pair<float,float>>& cluster)
   {
     if (cluster.size() < 3) return 0.0f;
@@ -102,7 +98,6 @@ private:
     Eigen::Matrix2f cov = (points * points.transpose()) / (cluster.size()-1);
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix2f> solver(cov);
     Eigen::Vector2f eigvals = solver.eigenvalues();
-    // linearity: 0.0 = line, 1.0 = circle/blob
     if (eigvals(0) + eigvals(1) < 1e-6) return 0.0f;
     return eigvals(0) / (eigvals(1) + 1e-6);
   }
@@ -118,61 +113,72 @@ private:
         v_scan = last_virtual_scan_;
     }
 
+    // Safety check: sizes must match
     if (msg->ranges.size() != v_scan->ranges.size()) {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Scan mismatch!");
         return;
     }
 
     float max_use_range = msg->range_max * max_range_ratio_;
 
-    // Containers
+    // --- STEP 1: CREATE DIFFERENCE SCAN ---
+    auto diff_scan = *msg; // Copy metadata from real scan
+    
+    // Reset ranges to infinity (assume everything is static/empty initially)
+    std::fill(diff_scan.ranges.begin(), diff_scan.ranges.end(), std::numeric_limits<float>::infinity());
+
+    // Clustering Containers
     std::vector<std::vector<std::pair<float, float>>> clusters;
     std::vector<std::pair<float, float>> current_cluster;
-    std::vector<std::pair<float, float>> static_raw_points; // For debugging
+    std::vector<std::pair<float, float>> static_raw_points;
 
-    // 2. Iterate and Filter (Subtraction)
+    // 2. Iterate and Filter
     for (size_t i = 0; i < msg->ranges.size(); ++i)
     {
       float r_real = msg->ranges[i];
       float r_virt = v_scan->ranges[i];
 
+      // Skip bad data
       if (std::isnan(r_real) || std::isinf(r_real) || r_real > max_use_range) continue;
 
+      // Calculate Coordinates
       float angle = msg->angle_min + i * msg->angle_increment;
       float x = r_real * std::cos(angle);
       float y = r_real * std::sin(angle);
 
-      // --- LOGIC: IS THIS NEW? ---
-      // If Real is much smaller than Virtual, it is a NEW object.
-      // If Real ~= Virtual, it is the WALL (Static).
-      if (r_real > (r_virt - diff_threshold_)) {
-          // It's part of the map. Add to static list.
-          static_raw_points.push_back({x, y});
+      // --- THE SUBTRACTION LOGIC ---
+      // Real must be significantly CLOSER than Virtual to be "New"
+      bool is_new_object = (r_real < (r_virt - diff_threshold_));
 
-          // End current dynamic cluster
+      if (is_new_object) {
+          // It's a NEW OBJECT!
+          
+          // 1. Add to Difference Scan (for debugging)
+          diff_scan.ranges[i] = r_real; 
+
+          // 2. Add to Clustering Logic
+          if (!current_cluster.empty()) {
+            auto [prev_x, prev_y] = current_cluster.back();
+            if (std::hypot(x - prev_x, y - prev_y) > gap_threshold_) {
+              if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
+                clusters.push_back(current_cluster);
+              current_cluster.clear();
+            }
+          }
+          current_cluster.push_back({x, y});
+      } 
+      else {
+          // It matches the Map (Static)
+          static_raw_points.push_back({x, y});
+          
+          // Terminate current cluster
           if (!current_cluster.empty()) {
              if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
                 clusters.push_back(current_cluster);
              current_cluster.clear();
           }
-          continue; 
       }
-
-      // --- LOGIC: CLUSTERING DYNAMIC POINTS ---
-      if (!current_cluster.empty())
-      {
-        auto [prev_x, prev_y] = current_cluster.back();
-        float dist = std::hypot(x - prev_x, y - prev_y);
-        if (dist > gap_threshold_)
-        {
-          if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
-            clusters.push_back(current_cluster);
-          current_cluster.clear();
-        }
-      }
-      current_cluster.push_back({x, y});
     }
-    // Add last cluster
+    // Add final cluster
     if (current_cluster.size() >= static_cast<size_t>(min_cluster_points_))
         clusters.push_back(current_cluster);
 
@@ -190,6 +196,9 @@ private:
         }
     }
 
+    // ★ PUBLISH THE DIFFERENCE SCAN
+    diff_scan_pub_->publish(diff_scan);
+
     // --- TF Lookup ---
     geometry_msgs::msg::TransformStamped transform;
     try {
@@ -198,11 +207,11 @@ private:
       return;
     }
 
-    // --- 3. CLASSIFY CLUSTERS (Geometric Check) ---
-    std::vector<geometry_msgs::msg::Point> object_points;   // BLUE
-    std::vector<geometry_msgs::msg::Point> wall_points;     // GREEN (Should be rare here)
-    std::vector<geometry_msgs::msg::Point> unknown_points;  // YELLOW
-    std::vector<geometry_msgs::msg::Point> static_points;   // RED
+    // --- 3. CLASSIFY CLUSTERS ---
+    std::vector<geometry_msgs::msg::Point> object_points;
+    std::vector<geometry_msgs::msg::Point> wall_points;
+    std::vector<geometry_msgs::msg::Point> unknown_points;
+    std::vector<geometry_msgs::msg::Point> static_points;
 
     for (const auto &cluster : clusters)
     {
@@ -212,16 +221,13 @@ private:
 
       std::string type = "UNKNOWN";
 
-      // A. Is it a long straight line? (Maybe a moving wall or door?)
       if (linearity < wal_lin_max_ && length > wal_len_min_ && n_points > wal_nmp_min_) {
         type = "WALL"; 
       }
-      // B. Is it a small compact object? (Person, Box, Robot)
       else if (length < obj_len_max_ && n_points > obj_nmp_min_) {
         type = "OBJECT";
       }
 
-      // Transform points
       for (auto &p : cluster) {
         geometry_msgs::msg::Point pt = transformPoint(p.first, p.second, transform);
         if (type == "OBJECT") object_points.push_back(pt);
@@ -230,16 +236,15 @@ private:
       }
     }
 
-    // Process Static Points (Just transform)
     for (auto &p : static_raw_points) {
         static_points.push_back(transformPoint(p.first, p.second, transform));
     }
 
-    // --- Publish ---
-    publishPointCloud(object_points, object_pub_, 0, 0, 255);       // Blue (Valid Objects)
-    publishPointCloud(wall_points, wall_pub_, 0, 255, 0);           // Green (Weird long changes)
-    publishPointCloud(unknown_points, unknown_pub_, 255, 255, 0);   // Yellow (Noise/Blobs)
-    publishPointCloud(static_points, static_pub_, 255, 0, 0);       // Red (Known Map)
+    // --- Publish Clusters ---
+    publishPointCloud(object_points, object_pub_, 0, 0, 255);       // Blue
+    publishPointCloud(wall_points, wall_pub_, 0, 255, 0);           // Green
+    publishPointCloud(unknown_points, unknown_pub_, 255, 255, 0);   // Yellow
+    publishPointCloud(static_points, static_pub_, 255, 0, 0);       // Red
   }
 
   // Helper: Transform
@@ -284,6 +289,9 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr virtual_scan_sub_;
   
+  // ★ NEW Publisher
+  rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr diff_scan_pub_;
+
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr wall_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr unknown_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr object_pub_;
