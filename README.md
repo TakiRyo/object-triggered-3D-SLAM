@@ -1,6 +1,7 @@
 # OTSLAM: Active Object Scanning System  
 
 object_scan_multi_good is best. Dec. 6
+start to work virtual scan
 
 ## 📖 System Overview  
 
