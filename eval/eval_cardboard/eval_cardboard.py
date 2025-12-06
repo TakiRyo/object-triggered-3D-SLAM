@@ -9,24 +9,37 @@ import os
 # ==========================================
 
 # 1. FILE PATHS
-PROPOSAL_FILE = "/home/ros2_env/taki/otslam/eval/eval_cardboard/prop_cardboard.ply"
+PROPOSAL_FILE = "/home/ros2_env/taki/otslam/eval/eval_cardboard/multi_prop_cardboard.ply"
 RTAB_FILE     = "/home/ros2_env/taki/otslam/eval/eval_cardboard/rtab_cardboard.ply"
 GT_FILE       = "/home/ros2_env/taki/otslam/eval/eval_cardboard/cardboard_box/meshes/cardboard_box.dae"
+
 GT_PLY_PATH   = "/home/ros2_env/taki/otslam/eval/eval_cardboard/gt_cardboard.ply"
-RESULT_PATH ="/home/ros2_env/taki/otslam/eval/eval_cardboard/result_cardboard.ply"
+RESULT_PATH   = "/home/ros2_env/taki/otslam/eval/eval_cardboard/result_cardboard.ply"
 
-# 2. GT SCALING (Specific to this object)
-# <scale>1.25932 1.00745 0.6</scale>
+# 2. GT SCALING (Specific to Cardboard)
 UNIT_SCALE = 0.001
-SCALE_X = 1.25932
+# SCALE_X = 1.25932
+SCALE_X= 1.4
 SCALE_Y = 1.00745
-SCALE_Z = 0.6
+SCALE_Z = 0.7
 
-# 3. MANUAL ALIGNMENT
-# Shifts the SLAM clouds to match the centered GT
-# Based on your finding: Z needs to go down 2cm
-ALIGN_TRANS = [0.0, 0.0, -0.02] 
-ALIGN_ROT   = [0.0, 0.0, 0.0]
+# 3. ★ SEPARATE ALIGNMENT CONFIGURATION ★
+# Adjust these to fix the "shift" for each method separately.
+# NOTE: The Maps are centered to (0,0,0). The GT is spawned at (0,0,0).
+# Use these offsets to fix rotation/translation errors.
+
+# --- FOR PROPOSAL (Yellow Points) ---
+OFFSET_PROP_TRANS = [-0.01, 0.0, 0.0]   # [x, y, z] e.g., [0.0, 0.05, 0.0]
+OFFSET_PROP_ROT   = [0.0, 0.0, 0.0]   # [roll, pitch, yaw]
+
+# --- FOR RTAB-MAP (Blue Points) ---
+OFFSET_RTAB_TRANS = [0.0, 0.0, 0.0]
+OFFSET_RTAB_ROT   = [0.0, 0.0, 0.0]
+
+# 4. AUTO-ALIGNMENT SWITCH (ICP)
+# If True, computer tries to snap GT to points automatically
+USE_ICP_PROP = False
+USE_ICP_RTAB = False
 
 # ==========================================
 
@@ -34,7 +47,7 @@ def load_pcd(path, color=None):
     try:
         pcd = o3d.io.read_point_cloud(path)
         if pcd.is_empty(): return None
-        # Center to (0,0,0) so it matches the GT's origin
+        # ★ Center to (0,0,0) for single object evaluation
         center = pcd.get_center()
         pcd.translate(-center)
         if color: pcd.paint_uniform_color(color)
@@ -47,45 +60,49 @@ def load_and_scale_gt(filename, color):
     except: return None
     if isinstance(mesh, trimesh.Scene): mesh = trimesh.util.concatenate(mesh.dump())
     
-    # Export/Import to sample points
-    mesh.export("temp_gt_box.ply")
-    gt_mesh = o3d.io.read_triangle_mesh("temp_gt_box.ply")
-    if os.path.exists("temp_gt_box.ply"): os.remove("temp_gt_box.ply")
+    # Clean way to sample points using Open3D/Trimesh bridge
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(mesh.sample(50000))
     
-    # Sample points
-    pcd = gt_mesh.sample_points_uniformly(number_of_points=10000)
-    
-    # Apply Non-Uniform Scale
+    # Apply Scaling
     points = np.asarray(pcd.points) * UNIT_SCALE
     points[:, 0] *= SCALE_X
     points[:, 1] *= SCALE_Y
     points[:, 2] *= SCALE_Z
     pcd.points = o3d.utility.Vector3dVector(points)
     
-    # Center GT
+    # Center GT to match the centered maps
     pcd.translate(-pcd.get_center())
     
     pcd.paint_uniform_color(color)
     return pcd
 
-def apply_alignment(pcd, rot, trans):
-    """Applies the manual offset to the SLAM cloud"""
+def apply_transform(pcd, rot, trans):
     rx, ry, rz = np.radians(rot[0]), np.radians(rot[1]), np.radians(rot[2])
     R = o3d.geometry.get_rotation_matrix_from_xyz((rx, ry, rz))
-    pcd.rotate(R, center=(0,0,0))
-    pcd.translate(trans)
-    return pcd
+    pcd_copy = copy.deepcopy(pcd)
+    pcd_copy.rotate(R, center=(0,0,0))
+    pcd_copy.translate(trans)
+    return pcd_copy
+
+def refine_icp(source, target):
+    print("   🤖 Running ICP...")
+    reg = o3d.pipelines.registration.registration_icp(
+        source, target, 0.05, np.eye(4),
+        o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000)
+    )
+    source.transform(reg.transformation)
+    return source
 
 def calculate_metrics(source_pcd, target_gt, name):
     print(f"\n🔍 Evaluating {name}...")
     
-    # 1. ACCURACY (Map -> GT)
     dists_map_to_gt = source_pcd.compute_point_cloud_distance(target_gt)
-    accuracy = np.mean(dists_map_to_gt) * 100 # cm
+    accuracy = np.mean(dists_map_to_gt) * 100 
     
-    # 2. COMPLETENESS (GT -> Map)
     dists_gt_to_map = target_gt.compute_point_cloud_distance(source_pcd)
-    completeness = np.mean(dists_gt_to_map) * 100 # cm
+    completeness = np.mean(dists_gt_to_map) * 100 
     
     print(f"   ✅ Accuracy (Mean Error):     {accuracy:.2f} cm")
     print(f"   ⚠️ Completeness (Mean Error): {completeness:.2f} cm")
@@ -94,29 +111,37 @@ def calculate_metrics(source_pcd, target_gt, name):
 def main():
     print("--- 📥 LOADING DATA ---")
     
-    # 1. Load Maps
     proposal = load_pcd(PROPOSAL_FILE, [1, 0.7, 0]) # Yellow
     rtab     = load_pcd(RTAB_FILE, [0, 0.6, 0.9])   # Blue
     
     if proposal is None: print(f"❌ Error loading {PROPOSAL_FILE}"); return
     if rtab is None:     print(f"❌ Error loading {RTAB_FILE}"); return
 
-    # 2. Load GT
-    gt_pcd = load_and_scale_gt(GT_FILE, [1, 0, 0]) # Red
-    if gt_pcd is None: print("❌ Error loading GT"); return
+    # --- 1. BUILD BASE GT ---
+    gt_base = load_and_scale_gt(GT_FILE, [1, 0, 0]) 
+    if gt_base is None: print("❌ Error loading GT"); return
 
-    # 3. Apply Manual Alignment (Shift SLAM down 2cm)
-    print(f"🔄 Aligning SLAM clouds (Z shift: {ALIGN_TRANS[2]}m)...")
-    proposal = apply_alignment(proposal, ALIGN_ROT, ALIGN_TRANS)
-    rtab     = apply_alignment(rtab, ALIGN_ROT, ALIGN_TRANS)
+    # --- 2. CREATE SEPARATE GT INSTANCES ---
+    
+    # GT for Proposal (Red)
+    gt_prop = copy.deepcopy(gt_base)
+    gt_prop = apply_transform(gt_prop, OFFSET_PROP_ROT, OFFSET_PROP_TRANS)
+    if USE_ICP_PROP: gt_prop = refine_icp(gt_prop, proposal)
+    gt_prop.paint_uniform_color([1, 0, 0]) 
+
+    # GT for RTAB (Green)
+    gt_rtab = copy.deepcopy(gt_base)
+    gt_rtab = apply_transform(gt_rtab, OFFSET_RTAB_ROT, OFFSET_RTAB_TRANS)
+    if USE_ICP_RTAB: gt_rtab = refine_icp(gt_rtab, rtab)
+    gt_rtab.paint_uniform_color([1, 0, 0]) 
 
     # --- 📊 RUN EVALUATION ---
     print("\n========================================")
     print("     🏆 CARDBOARD METRICS REPORT")
     print("========================================")
 
-    acc_prop, comp_prop = calculate_metrics(proposal, gt_pcd, "PROPOSAL (OTSLAM)")
-    acc_rtab, comp_rtab = calculate_metrics(rtab, gt_pcd, "BASELINE (RTAB-Map)")
+    acc_prop, comp_prop = calculate_metrics(proposal, gt_prop, "PROPOSAL (OTSLAM)")
+    acc_rtab, comp_rtab = calculate_metrics(rtab, gt_rtab, "BASELINE (RTAB-Map)")
 
     print("\n--- 📝 SUMMARY TABLE ---")
     print(f"{'Metric':<15} | {'Proposal':<10} | {'Baseline':<10} | {'Result':<15}")
@@ -125,37 +150,26 @@ def main():
     print(f"{'Completeness':<15} | {comp_prop:.2f} cm    | {comp_rtab:.2f} cm    | {'✅ Proposal' if comp_prop < comp_rtab else '❌ Baseline'}")
     
     # --- VISUALIZATION ---
-    print("\n👀 Visualizing (Red=GT, Yellow=Proposal, Blue=RTAB)...")
+    print("\n👀 Visualizing...")
+    print("   Left: Proposal (Yellow) vs GT (Red)")
+    print("   Right: RTAB (Blue) vs GT (Green)")
     
-    # Shift Left (Proposal vs GT)
-    proposal_vis = copy.deepcopy(proposal)
-    proposal_vis.translate([-0.5, 0, 0])
-    gt_vis_prop = copy.deepcopy(gt_pcd)
-    gt_vis_prop.translate([-0.5, 0, 0])
+    # Shift Left for display
+    vis_prop_map = copy.deepcopy(proposal).translate([-0.5, 0, 0])
+    vis_prop_gt  = copy.deepcopy(gt_prop).translate([-0.5, 0, 0])
     
-    # Shift Right (RTAB vs GT)
-    rtab_vis = copy.deepcopy(rtab)
-    rtab_vis.translate([0.5, 0, 0])
-    gt_vis_rtab = copy.deepcopy(gt_pcd)
-    gt_vis_rtab.translate([0.5, 0, 0])
+    # Shift Right for display
+    vis_rtab_map = copy.deepcopy(rtab).translate([0.5, 0, 0])
+    vis_rtab_gt  = copy.deepcopy(gt_rtab).translate([0.5, 0, 0])
 
-    o3d.visualization.draw_geometries([proposal_vis, gt_vis_prop, rtab_vis, gt_vis_rtab],
-                                      window_name="Cardboard: Proposal vs RTAB-Map",
-                                      width=1200, height=600)
+    o3d.visualization.draw_geometries([vis_prop_map, vis_prop_gt, vis_rtab_map, vis_rtab_gt],
+                                      window_name="Cardboard: Proposal vs RTAB-Map")
 
-    # Save the scaled and aligned GT as a PLY file
-    output_gt_path = GT_PLY_PATH
-    print(f"💾 Saving GT to {output_gt_path}...")
-    o3d.io.write_point_cloud(output_gt_path, gt_pcd)
-    print("✅ GT saved successfully!")
-
-    # Save the combined visualization as a PLY file
-    
-    output_vis_path = RESULT_PATH
-    print(f"💾 Saving visualization to {output_vis_path}...")
-    combined_vis = proposal_vis + gt_vis_prop + rtab_vis + gt_vis_rtab
-    o3d.io.write_point_cloud(output_vis_path, combined_vis)
-    print("✅ Visualization saved successfully!")
+    # Save results
+    print(f"💾 Saving result visualization to {RESULT_PATH}...")
+    combined_vis = vis_prop_map + vis_prop_gt + vis_rtab_map + vis_rtab_gt
+    o3d.io.write_point_cloud(RESULT_PATH, combined_vis)
+    print("✅ Saved!")
 
 if __name__ == "__main__":
     main()
