@@ -1,6 +1,6 @@
 # OTSLAM: Active Object Scanning System  
 
-continious scan branch  
+object_scan_multi_good is best. Dec. 6
 
 ## 📖 System Overview  
 
