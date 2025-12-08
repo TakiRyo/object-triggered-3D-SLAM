@@ -24,6 +24,8 @@
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
 
+  <depend>nav_msgs</depend>]
+
   <!-- Optional: for parameter support -->
   <depend>rclcpp_components</depend>
 

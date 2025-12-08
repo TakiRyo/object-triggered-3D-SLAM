@@ -24,6 +24,16 @@ add_executable(multi_send_goal_node src/multi_send_goal_node.cpp)
 
 # check new object
 add_executable(object_filter src/object_filter.cpp)
+# check virtual and real scan
+add_executable(diff_node src/diff_node.cpp)
+
+ament_target_dependencies(diff_node
+  rclcpp 
+  sensor_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  nav_msgs
+)
 
 ament_target_dependencies(object_filter
   rclcpp 
@@ -90,6 +100,7 @@ install(TARGETS
   multi_send_goal_node
   multi_object_goal_selector
   object_filter
+  diff_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
