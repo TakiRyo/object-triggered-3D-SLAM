@@ -37,7 +37,7 @@ public:
     this->get_parameter("time_threshold", time_thresh_);
     this->get_parameter("grid_resolution", grid_res_);
     this->get_parameter("decay_rate", decay_rate_);
-
+    
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "/scan", 10, std::bind(&ChangeDetectorNode::scanCallback, this, std::placeholders::_1));
 
