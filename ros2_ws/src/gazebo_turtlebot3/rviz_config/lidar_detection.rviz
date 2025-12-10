@@ -505,17 +505,17 @@ Visualization Manager:
         Value: true
       Axis: Z
       Channel Name: intensity
-      Class: rviz_default_plugins/LaserScan
-      Color: 255; 0; 255
+      Class: rviz_default_plugins/PointCloud2
+      Color: 0; 255; 127
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 0
+      Max Intensity: 4096
       Min Color: 0; 0; 0
       Min Intensity: 0
-      Name: diff
+      Name: added_obj
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
@@ -527,10 +527,10 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /possibly_new_scan
+        Value: /object_clusters
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -549,7 +549,7 @@ Visualization Manager:
       Max Intensity: 4096
       Min Color: 0; 0; 0
       Min Intensity: 0
-      Name: new_obj
+      Name: removed_obj
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
@@ -561,7 +561,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /object_clusters
+        Value: /removed_objects
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -611,16 +611,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 21.78352928161621
+      Distance: 22.502361297607422
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 2.339977264404297
-        Y: 0.5509763360023499
-        Z: -1.3814438581466675
+        X: -1.2313975095748901
+        Y: 1.5539283752441406
+        Z: -1.5632851123809814
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -649,5 +649,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1539
-  X: 2109
-  Y: 73
+  X: 2032
+  Y: 85

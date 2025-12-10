@@ -17,7 +17,7 @@ find_package(std_srvs REQUIRED)
 add_executable(lidar_cluster_publisher src/lidar_cluster_publisher.cpp)
 # estimate object size and publishe marker. 
 add_executable(object_goal_selector src/object_goal_selector.cpp)
-add_executable(multi_object_goal_selector src/2_multi_object_goal_selector.cpp)
+add_executable(multi_object_goal_selector src/3_multi_object_goal_selector.cpp)
 add_executable(removed_object_goal_selector src/removed_object_goal_selector.cpp)
 
 # publish goal node.
