@@ -22,7 +22,7 @@ add_executable(removed_object_goal_selector src/removed_object_goal_selector.cpp
 
 # publish goal node.
 add_executable(send_goal_node src/send_goal_node.cpp)
-add_executable(multi_send_goal_node src/multi_send_goal_node.cpp)
+add_executable(multi_send_goal_node src/3_multi_send_goal_node.cpp)
 
 # check new object
 add_executable(object_filter src/object_filter.cpp)
