@@ -23,8 +23,8 @@ def generate_launch_description():
         name='diff_node',
         output='screen',
         remappings=[
-            ('/new_objects', '/object_clusters'),      # New objects -> Goal Selector
-            ('/removed_objects', '/object_clusters')   # Disappeared walls -> Goal Selector
+            ('/added_objects', '/object_clusters'),      # New objects -> Goal Selector
+            # ('/removed_objects', '/object_clusters')   # Disappeared walls -> Goal Selector
         ],
         parameters=[{
             'distance_threshold': 0.5, # 50cm gap required
