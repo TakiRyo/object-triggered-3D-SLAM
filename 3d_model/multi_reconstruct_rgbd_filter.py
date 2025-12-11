@@ -7,7 +7,7 @@ import os
 import sys
 
 # --- CONFIGURATION ---
-base_dir = "/home/ros2_env/taki/otslam/3d_model/object_scan_multi_4"
+base_dir = "/home/ros2_env/taki/otslam/3d_model/object_scan_update"
 color_dir = os.path.join(base_dir, "color")
 depth_dir = os.path.join(base_dir, "depth")
 pose_dir  = os.path.join(base_dir, "poses")
@@ -24,9 +24,9 @@ FILE_PREFIX = "Object_0"
 
 OBJECT_RANGES = {
     # Name used for .ply file   : (Start, End) - Inclusive
-    "object_0"                  : (1, 22),
-    "object_1"                  : (23, 38),
-    "object_2"                  : (39, 50),
+    "object_0"                  : (1, 16),
+    # "object_1"                  : (23, 38),
+    # "object_2"                  : (39, 50),
     # Add more as needed:
     # "object_3"                : (55, 70),
 }
