@@ -49,7 +49,8 @@ public:
 
     // Uniform Spacing Parameters
     this->declare_parameter("scan_point_interval", 1.0); 
-    this->declare_parameter("min_scan_points", 8); 
+    this->declare_parameter("scan_point_interval_removed", 5.0); 
+    this->declare_parameter("min_scan_points", 4); 
 
     this->declare_parameter("global_frame", "map"); 
 
@@ -64,6 +65,7 @@ public:
     scan_step_threshold_        = this->get_parameter("scan_step_threshold").as_double();
     
     scan_point_interval_        = this->get_parameter("scan_point_interval").as_double();
+    scan_point_interval_removed_ = this->get_parameter("scan_point_interval_removed").as_double();
     min_scan_points_            = this->get_parameter("min_scan_points").as_int();
     
     global_frame_               = this->get_parameter("global_frame").as_string();
@@ -86,7 +88,7 @@ public:
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready. Mode: Uniform Distance Scan (%.2fm)", scan_point_interval_);
+    // RCLCPP_INFO(this->get_logger(), "✅ ObjectTracker Ready. Mode: Uniform Distance Scan (%.2fm)", scan_point_interval_);
 
     // Additional Subscriber & Publishers for Removed Clusters
     removed_object_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -108,6 +110,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   
   double scan_point_interval_;
+  double scan_point_interval_removed_;
   int min_scan_points_;
   int min_cluster_points_; // <--- Re-added this missing declaration!
 
@@ -438,8 +441,9 @@ private:
           float vp_radius = c.lock_radius + visiting_point_buffer_;
           int obj_id_index = &c - &removed_stable_objects_[0]; 
 
+          double scan_point_interval_removed_ = 5.0; // Fixed interval for removed clusters
           double circumference = 2.0 * M_PI * vp_radius;
-          int num_points = std::max(min_scan_points_, (int)std::round(circumference / scan_point_interval_));
+          int num_points = std::max(min_scan_points_, (int)std::round(circumference / scan_point_interval_removed_));
           double angle_step = (2.0 * M_PI) / (double)num_points;
 
           for (int i = 0; i < num_points; i++) {

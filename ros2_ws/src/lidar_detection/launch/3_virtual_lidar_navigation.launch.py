@@ -53,8 +53,9 @@ def generate_launch_description():
             'points_count_normal': 6,
             'points_count_big': 8,
             'degree_visiting_points': 20.0,
-            'scan_point_interval': 5.0,
-            "min_scan_points": 4,         # Lowered for safety
+            'scan_point_interval': 1.0,
+            'scan_point_interval_removed': 5.0,
+            "min_scan_points": 4,  
         }]
     )
 
@@ -75,8 +76,8 @@ def generate_launch_description():
             default_value='true',
             description='Use simulation (Gazebo) clock if true'),
         
-        virtual_scan_node,
+        # virtual_scan_node,
         change_detector,
         multi_goal_selector,
-        # multi_goal_sender,
+        multi_goal_sender,
     ])

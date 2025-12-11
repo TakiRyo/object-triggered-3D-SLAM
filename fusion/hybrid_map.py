@@ -14,13 +14,13 @@ import sys
 # 2d map
 map_base = "/home/ros2_env/taki/otslam/2d_map"
 yaml_path = os.path.join(map_base, "map_check_nov30.yaml")
-pgm_path  = os.path.join(map_base, "map_check_nov30.pgm")
+pgm_path  = os.path.join(map_base, "map_merged_dec_11.pgm")
 
 # 3d map directory (Where Object_0.ply, Object_1.ply are located)
 obj_dir  = "/home/ros2_env/taki/otslam/3d_model/object_scan_multi_good/3d_reconst"
 
 # Output
-save_path = "/home/ros2_env/taki/otslam/fusion/hybrid_maps/hybrid_map_multi_good.ply"
+save_path = "/home/ros2_env/taki/otslam/fusion/hybrid_maps/hybrid_map_multi_2.ply"
 
 def create_map_cloud(yaml_file, pgm_file):
     print(f"   -> Loading Map: {pgm_file}")
