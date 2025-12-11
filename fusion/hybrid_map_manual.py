@@ -1,6 +1,15 @@
-# ## hybrid_map_generator.py
-# ## Combines 2D PGM Map + Multiple 3D PLY Objects
-# 3d model 
+"""
+This script combines a 2D occupancy grid map (PGM format) with multiple 3D object reconstructions (PLY format)
+to create a hybrid map. The user can manually adjust the position and orientation of each 3D object
+relative to the 2D map using an interactive visualization tool.
+
+Usage:
+1. The 2D map is loaded from a PGM file and converted into a point cloud.
+2. Each 3D object is loaded as a point cloud and displayed alongside the 2D map.
+3. The user can adjust the position and orientation of the 3D object interactively.
+4. The adjusted 3D object is merged with the 2D map.
+5. The final hybrid map is saved as a PLY file.
+"""
 
 import yaml
 import cv2
@@ -11,20 +20,20 @@ import glob
 import copy
 
 # --- CONFIGURATION ---
-# 2d map
+# 2D map
 map_base = "/home/ros2_env/taki/otslam/2d_map"
 yaml_path = os.path.join(map_base, "map_selective.yaml")
 pgm_path  = os.path.join(map_base, "map_selective.pgm")
 
-# 3d map directory
+# 3D map directory
 obj_dir  = "/home/ros2_env/taki/otslam/3d_model/object_scan_update/3d_reconst"
 
 # Output
 save_path = "/home/ros2_env/taki/otslam/fusion/hybrid_maps/hybrid_map_selective_adjusted.ply"
 
 # --- CONTROLS ---
-TRANS_STEP = 0.05  # 1回の移動量 (メートル)
-ROT_STEP   = 2.0   # 1回の回転量 (度)
+TRANS_STEP = 0.05  # Translation step size (meters)
+ROT_STEP   = 2.0   # Rotation step size (degrees)
 
 class ManualAligner:
     def __init__(self, static_map_pcd, target_obj_pcd, obj_name):
@@ -33,7 +42,7 @@ class ManualAligner:
         self.obj_name = obj_name
         self.vis = o3d.visualization.VisualizerWithKeyCallback()
         
-        # 累積変換行列
+        # Cumulative transformation matrix
         self.total_transformation = np.identity(4)
 
     def run(self):
@@ -46,26 +55,26 @@ class ManualAligner:
 
         self.vis.create_window(window_name=f"Aligning: {self.obj_name}", width=1280, height=720)
         
-        # マップ（固定）とオブジェクト（動かす）を追加
+        # Add the map (static) and object (movable)
         self.vis.add_geometry(self.map_pcd)
         self.vis.add_geometry(self.obj_pcd)
         
-        # 軸表示（オリジン）
+        # Add coordinate axes (origin)
         axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
         self.vis.add_geometry(axis)
 
-        # --- キー割り当て ---
-        # 移動
+        # --- Key Bindings ---
+        # Translation
         self.vis.register_key_callback(ord("W"), self.move_x_pos)
         self.vis.register_key_callback(ord("S"), self.move_x_neg)
         self.vis.register_key_callback(ord("A"), self.move_y_pos)
         self.vis.register_key_callback(ord("D"), self.move_y_neg)
         
-        # 回転
+        # Rotation
         self.vis.register_key_callback(ord("Z"), self.rot_yaw_pos)
         self.vis.register_key_callback(ord("C"), self.rot_yaw_neg)
         
-        # 終了
+        # Finish
         self.vis.register_key_callback(ord("Q"), self.close_window)
 
         self.vis.run()
@@ -73,7 +82,7 @@ class ManualAligner:
         
         return self.obj_pcd
 
-    # --- 操作関数 ---
+    # --- Transformation Functions ---
     def apply_trans(self, trans_matrix):
         self.obj_pcd.transform(trans_matrix)
         self.vis.update_geometry(self.obj_pcd)
@@ -97,7 +106,7 @@ class ManualAligner:
         self.apply_trans(T)
 
     def rot_yaw_pos(self, vis):
-        # 重心を中心に回転させるのが自然
+        # Rotate around the center of the object
         center = self.obj_pcd.get_center()
         R = self.obj_pcd.get_rotation_matrix_from_xyz((0, 0, np.radians(ROT_STEP)))
         self.obj_pcd.rotate(R, center=center)
