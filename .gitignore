@@ -9,6 +9,8 @@
 /ros2_ws/src/DynamixelSDK
 /ros2_ws/src/turtlebot3_simulations
 
+
+
 #maps
 /2d_map
 /3d_model/object_scan_good
@@ -17,6 +19,7 @@
 /3d_model/object_scan_multi_2
 /3d_model/object_scan_multi_3
 /3d_model/object_scan_multi_good
+/3d_model/object_scan_update
 /fusion/hybrid_maps
 
 #rtabmap
