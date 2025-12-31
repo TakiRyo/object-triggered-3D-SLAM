@@ -35,7 +35,6 @@
 
 #others
 *.ply
-*.png
 *.jpg
 *.db
 *.bag
