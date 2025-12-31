@@ -1,138 +1,77 @@
-# OTSLAM: Active Object Scanning System  
+# Object-Triggered 3D SLAM (OTSLAM)
 
-object_scan_multi_good is best. Dec. 6
-start to work virtual scan
+**An efficient, selective 3D mapping framework for Service Robots using ROS 2 (Humble).**
 
-publish my work
+Unlike traditional SLAM which indiscriminately reconstructs the entire environment, **OTSLAM** focuses only on semantically important objects. It uses a 2D LiDAR to trigger detailed RGB-D scans of objects (like chairs and tables) while maintaining a lightweight 2D map for navigation.
 
-## 📖 System Overview  
+<p align="center">
+<img src="/docs/demo_scan.gif" width="600" alt="OTSLAM Demo"/>
+</p>
 
-This project implements an autonomous **"Move & Scan"** pipeline for structured 3D reconstruction. It utilizes 2D LiDAR data to detect and classify objects in the environment, tracks their persistence over time, and coordinates a mobile robot to navigate around them. Upon reaching specific viewpoints, the robot stabilizes and captures synchronized RGB-D data and camera poses for high-quality 3D mapping.
+▶️ **[Watch the Full Demo Video](https://www.youtube.com/watch?v=AGsYb76OiyI)**
 
-### The Pipeline
+---
 
-1.  **Perception (`lidar_detection`)**: Raw LiDAR data is segmented into clusters. Walls are filtered out, and compact objects are tracked.
-2.  **Mission Planning (`lidar_detection`)**: The system generates **Adaptive Visiting Points** (Goals) around detected stable objects.
-3.  **Orchestration (`system_manager`)**: A central manager commands the robot to drive to these points using the **Nav2** stack.
-4.  **Data Capture (`system_manager`)**: Once arrived, the robot freezes its movement and triggers the camera system to capture high-quality dataset frames.
+## 🚀 What You Can Do With This System
 
------  
+This package provides a complete pipeline for selective mapping and efficient map maintenance.
 
-## 📦 Package 1: Lidar Detection
+### 1. Efficient Initial 3D Mapping
 
-*Focus: Raw Sensor Processing, Classification, and Object Tracking.*
+Generate high-quality **Hybrid Maps** without the heavy computational cost of full 3D reconstruction.
 
-### 1\. 🧩 LiDAR Cluster Classification
+* **Automatic Object Detection:** The robot autonomously explores the room using 2D LiDAR.
+* **Selective Scanning:** When an object (e.g., furniture) is detected, the robot navigates to it and triggers a targeted RGB-D scan.
+* **Result:** You get a standard 2D occupancy grid for navigation + high-resolution 3D point clouds **only** for the objects that matter.
 
-**Node Name:** `lidar_cluster_publisher`
+### 2. Fast Map Updates (Maintenance)
 
-Segments 2D LiDAR scans into distinct clusters and classifies them based on geometric properties (PCA linearity, size, density).
+Keep your map up-to-date without re-scanning the whole room.
 
-  * **Logic:**
-    1.  **Clustering:** Groups points based on Euclidean distance. 
-    2.  **PCA Analysis:** Calculates eigenvalues ($\lambda_0, \lambda_1$) to determine if a cluster is linear or blob-like.
-    3.  **Classification:**
-          * 🟩 **Wall:** Long, straight, dense, high linearity.
-          * 🟦 **Object:** Short, compact (obstacles/items).
-          * 🟨 **Unknown:** Curved corners or irregular shapes.
+* **Change Detection:** The system compares real-time LiDAR data with the saved map.
+* **Targeted Updates:** If a chair or table has moved, the system detects the discrepancy and re-scans **only that specific location**.
+* **Performance:** Drastically reduces time and data size compared to running a full SLAM session again.
 
-| Topic / Parameter | Type | Description |
-| :--- | :--- | :--- |
-| **Sub** `/scan` | `LaserScan` | Raw LiDAR input. |
-| **Pub** `/wall_clusters` | `PointCloud2` | Static environmental features. |
-| **Pub** `/object_clusters` | `PointCloud2` | Candidates for tracking. |
-| `wal_lin_max` | Param | Linearity threshold (Lower = stricter straight lines). |
+---
 
-### 2\. 🎯 Object Tracker & Goal Generator
+## 📊 Performance Highlights
 
-**Node Name:** `object_cluster_marker`
+The core advantage of OTSLAM is its ability to filter out redundant background information (walls, floors) and focus on interactable objects.
 
-Provides temporal persistence to objects and generates navigation goals. It filters out transient noise and creates a "Lock Zone" around valid objects.
+### Visual Comparison: Traditional vs. OTSLAM
 
-  * **Features:**
-      * **State Machine:** `Candidate` (Yellow) $\to$ `Stable` (Green) if tracked for `stability_time`.
+The figure below demonstrates the difference in map quality and storage efficiency.
 
-      * **Goal Generation (Adaptive Density):** Creates visiting points (Cyan Arrows) around the stable object. The quantity adapts to the object's size to ensure thorough coverage:
+* **(a) Traditional Dense Mapping:** Reconstructs the entire room indiscriminately, resulting in a noisy map with high memory usage.
+* **(b) Proposed OTSLAM:** Selectively reconstructs only targeted objects (highlighted in red), resulting in a clean, semantic-focused map.
 
-          * **Small/Normal Objects:** Generates **6** points.
-          * **Large Objects:** Generates **8** points.
-          * The transition size is based on the `scan_step_threshold` parameter comparing against the object's diagonal size.
+<p align="center">
+<img src="figures/comparison_mapping.png" width="800" alt="Comparison between Traditional Mapping and OTSLAM"/>
 
-      * **Orientation Logic:** Calculates Yaw so the robot always **faces the object center** at the destination.
 
-      * **Service Integration:** Can "Freeze" the map state (stop updating object positions) to prevent goal jitter during navigation.
 
-| Topic / Service | Type | Description |
-| :--- | :--- | :--- |
-| **Sub** `/object_clusters` | `PointCloud2` | Input from classification node. |
-| **Pub** `/object_visiting_points`| `MarkerArray` | Cyan arrows representing nav goals. |
-| **Srv** `set_tracking_mode` | `SetBool` | `True`=Live Lidar, `False`=Frozen Memory. |
 
-### 3\. 📡 Goal Sender (Mission Manager)
 
-**Node Name:** `goal_sender`
+<em>Fig 1. Comparison of 3D reconstruction results. (a) Conventional dense mapping vs. (b) Object-Triggered selective mapping.</em>
+</p>
 
-Acts as the dispatch interface between the Tracker and the System Manager. It decides *which* point to visit next.
+### Key Metrics
 
-  * **Strategy (Greedy + Sticky):**
-    1.  **Sticky Focus:** If currently visiting points belonging to "Object A", it prioritizes remaining points for "Object A" before switching focus to "Object B".
-    2.  **Proximity:** If the current object's points are exhausted or no current focus exists, it picks the physically closest target from the overall queue.
-    3.  **Progress Tracking:** Marks points as "Visited" when the robot gets within `reach_threshold`.
+* **Data Reduction:** Reduces map data size by **99.0%** compared to conventional dense 3D mapping.
+* **Efficiency:** Significantly faster update times by avoiding global re-scanning.
 
-| Topic | Description |
-| :--- | :--- |
-| **Sub** `/object_visiting_points` | Goals generated by the Tracker. |
-| **Sub** `/odom` | Robot's current position for distance calculations. |
-| **Pub** `/manager/target_pose` | The active target sent to the System Manager. |
-| **Pub** `/goal_status` | Visual feedback: Red (Active), Green (Done), Grey (Queue). |
+---
 
------
+## 🛠️ Prerequisites
 
-## 📦 Package 2: System Manager
+* **OS:** Ubuntu 22.04 LTS
+* **ROS Distro:** ROS 2 Humble
+* **Dependencies:**
+* `slam_toolbox`
+* `nav2_bringup`
+* `turtlebot3_gazebo` & `turtlebot3_navigation2`
+* `pcl_ros` (for point cloud processing)
 
-*Focus: Robot Control, State Machine, and Data Saving.*
 
-### 1\. 🧠 System Manager
 
-**Node Name:** `system_manager`
-
-The central orchestrator connecting the Mission Manager, Nav2, and the Scanner. It implements a Finite State Machine: **IDLE $\to$ NAVIGATING $\to$ SCANNING**.
-
-#### ★ Feature Spotlight: Smart Tracking Strategy
-
-To handle sensor noise and navigation occlusions, this node intelligently switches the Tracker's mode using the `set_tracking_mode` service:
-
-1.  **Searching (Unfreeze):** When a **NEW** Object ID is received, Lidar tracking is enabled (`True`) to pinpoint the object's exact location before navigation begins.
-2.  **Orbiting (Freeze):** When moving to a new viewpoint of the **SAME** object, tracking is **Frozen** (`False`). This prevents the center point from shifting due to changing perspective or occlusion as the robot orbits.
-3.  **Scanning (Freeze):** Upon arrival, tracking is forced Frozen (`False`) to ensure coordinate stability and prevent goal jitter during data capture.
-
-| Action / Service | Role |
-| :--- | :--- |
-| `Maps_to_pose` | Client for Nav2 to move the robot. |
-| `scan_object` | Triggers the ScannerNode upon arrival. |
-| `set_tracking_mode` | Toggles the Tracker's Lidar update loop. |
-
-### 2\. 📸 Scanner Node
-
-**Node Name:** `scanner_node`
-
-The "Photographer." Acts as an Action Server that saves a synchronized snapshot of the environment.
-
-  * **The "Stop-and-Stare" Routine:**
-    1.  **Buffer Flush:** Clears old images to ensure no motion blur from the navigation phase.
-    2.  **Stabilization:** Waits for `wait_time` (e.g., 5.0s) to let robot vibrations settle.
-    3.  **Capture:** Saves RGB, Depth, and TF Pose.
-    4.  **Depth Conversion:** Converts raw float meters $\to$ 16-bit PNG (Millimeters) and patches $\text{NaN}$ values.
-    5.  **Cool Down:** Waits again before returning success to prevent immediate robot jerking.
-
-**Output Directory Structure:**
-
-```text
-/output_dir
-├── /color
-│   └── label_N.jpg        # Standard RGB
-├── /depth
-│   └── label_N.png        # 16-bit Integer Depth (mm)
-└── /poses
-    └── label_N.txt        # 4x4 Matrix (World -> Camera)
-```
+---
