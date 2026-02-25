@@ -8,7 +8,7 @@ Unlike traditional SLAM which indiscriminately reconstructs the entire environme
 <img src="/docs/demo_scan.gif" width="600" alt="OTSLAM Demo"/>
 </p>
 
-▶️ **[Watch the Full Demo Video](https://www.youtube.com/watch?v=AGsYb76OiyI)**
+▶️ **[Watch the Full Demo Video](https://youtu.be/aM--JYAwPe8)**
 
 ---
 
